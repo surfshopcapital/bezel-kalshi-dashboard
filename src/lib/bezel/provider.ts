@@ -1,335 +1,339 @@
 /**
- * Bezel data provider.
+ * BezelProvider — 4-tier price fetching with automatic fallback.
  *
- * Attempts to fetch price data for a given Bezel entity slug using a
- * tiered strategy:
- *   1. Undocumented Bezel JSON API (frontend_network_capture quality)
- *   2. HTML scraping via fetch + regex (html_scrape quality)
- *   3. Fallback: returns a manual_mapping_fallback result with null price
+ * Tier 1 — Direct fetch to a cached/known endpoint (fastest, no browser).
+ * Tier 2 — XHR discovery via Playwright, then direct fetch to each candidate.
+ * Tier 3 — Full DOM scrape via Playwright (slowest browser path).
+ * Tier 4 — Manual fallback: write null price row so the mapping is preserved.
  *
- * The caller is responsible for persisting the result to the database.
+ * Design contract:
+ *  - No public method throws. All errors are caught, logged, and trigger the
+ *    next tier (or a null result).
+ *  - History methods return [] when no data is available (future API stub).
+ *  - The singleton `bezelProvider` is exported for use by ingestion jobs.
  */
 
-import type { BezelNormalizedPrice, BezelIngestionResult, BezelEntityType } from './types';
-import { MARKET_MAPPINGS } from '@/lib/mappings';
+import { discoverBezelEndpoints, validateDiscoveredEndpoint } from './discovery';
+import { scrapeBezelIndexPage, scrapeBezelModelPage } from './scrapers';
+import { normalizeBezelIndexResponse, normalizeBezelModelResponse } from './normalizer';
+import type {
+  BezelEntityType,
+  BezelIngestionResult,
+  BezelNormalizedPrice,
+  BezelHistoryPoint,
+  BezelDiscoveredEndpoint,
+} from './types';
 
 // ---------------------------------------------------------------------------
-// Bezel API endpoint templates
+// BezelProvider class
 // ---------------------------------------------------------------------------
 
-const BEZEL_INDEXES_API = 'https://markets.getbezel.com/api/indexes';
-const BEZEL_MODEL_API_BASE = 'https://markets.getbezel.com/api/models';
+export class BezelProvider {
+  /** Base URL for Bezel Markets (overridable via env). */
+  private readonly bezelBaseUrl: string;
 
-// Fallback page URLs for HTML scraping
-const BEZEL_INDEXES_PAGE = 'https://markets.getbezel.com/indexes';
-const BEZEL_MODEL_PAGE_BASE = 'https://markets.getbezel.com/models';
+  /**
+   * Per-slug cache of discovered endpoints.
+   * Key: entity slug. Value: endpoints found during the last discovery run.
+   * This is an in-memory cache (process lifetime); the discovery module also
+   * maintains its own 1-hour cache keyed by page URL.
+   */
+  private endpointCache: Map<string, BezelDiscoveredEndpoint[]>;
 
-const FETCH_TIMEOUT_MS = 15_000;
-
-// ---------------------------------------------------------------------------
-// Internal helpers
-// ---------------------------------------------------------------------------
-
-interface BezelIndexApiEntry {
-  name?: string;
-  label?: string;
-  slug?: string;
-  value?: number;
-  price?: number;
-  change?: number;
-  change_pct?: number;
-  changePct?: number;
-  daily_change?: number;
-  daily_change_pct?: number;
-  date?: string;
-  updated_at?: string;
-}
-
-interface BezelModelApiEntry {
-  name?: string;
-  title?: string;
-  slug?: string;
-  price?: number;
-  value?: number;
-  daily_change?: number;
-  change?: number;
-  daily_change_pct?: number;
-  change_pct?: number;
-  changePct?: number;
-  updated_at?: string;
-}
-
-async function fetchWithTimeout(url: string, opts: RequestInit = {}): Promise<Response> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-  try {
-    const response = await fetch(url, {
-      ...opts,
-      signal: controller.signal,
-      headers: {
-        Accept: 'application/json, text/html',
-        'User-Agent':
-          'Mozilla/5.0 (compatible; BezelWatchesDashboard/1.0)',
-        ...((opts.headers as Record<string, string>) ?? {}),
-      },
-    });
-    return response;
-  } finally {
-    clearTimeout(timer);
+  constructor(baseUrl = process.env.BEZEL_BASE_URL ?? 'https://markets.getbezel.com') {
+    this.bezelBaseUrl = baseUrl;
+    this.endpointCache = new Map();
   }
-}
 
-// ---------------------------------------------------------------------------
-// Strategy 1: Bezel JSON API for indexes
-// ---------------------------------------------------------------------------
+  // -------------------------------------------------------------------------
+  // Public: main entry point
+  // -------------------------------------------------------------------------
 
-async function fetchIndexFromApi(slug: string): Promise<BezelNormalizedPrice | null> {
-  try {
-    const response = await fetchWithTimeout(BEZEL_INDEXES_API, {
-      headers: { Accept: 'application/json' },
-    });
-    if (!response.ok) return null;
-
-    const raw = (await response.json()) as BezelIndexApiEntry[] | { indexes?: BezelIndexApiEntry[]; data?: BezelIndexApiEntry[] };
-
-    const entries: BezelIndexApiEntry[] = Array.isArray(raw)
-      ? raw
-      : (raw as { indexes?: BezelIndexApiEntry[]; data?: BezelIndexApiEntry[] }).indexes ??
-        (raw as { data?: BezelIndexApiEntry[] }).data ??
-        [];
-
-    // Find the entry matching our slug
-    const entry = entries.find(
-      (e) =>
-        (e.slug ?? slugify(e.name ?? e.label ?? '')).toLowerCase() === slug.toLowerCase(),
-    );
-
-    if (!entry) return null;
-
-    const price = entry.value ?? entry.price;
-    if (price == null || !Number.isFinite(price)) return null;
-
-    const dailyChange = entry.daily_change ?? entry.change ?? null;
-    const dailyChangePct =
-      entry.daily_change_pct ?? entry.change_pct ?? entry.changePct ?? null;
-
-    return {
-      slug,
-      entityType: 'index',
-      name: entry.name ?? entry.label ?? slug,
-      price,
-      dailyChange: dailyChange !== undefined ? dailyChange : null,
-      dailyChangePct: dailyChangePct !== undefined ? dailyChangePct : null,
-      volume: null,
-      capturedAt: new Date().toISOString(),
-      dataSourceQuality: 'frontend_network_capture',
-      rawPayload: entry,
-    };
-  } catch {
-    return null;
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Strategy 1b: Bezel JSON API for individual models
-// ---------------------------------------------------------------------------
-
-async function fetchModelFromApi(slug: string): Promise<BezelNormalizedPrice | null> {
-  try {
-    const url = `${BEZEL_MODEL_API_BASE}/${encodeURIComponent(slug)}`;
-    const response = await fetchWithTimeout(url, {
-      headers: { Accept: 'application/json' },
-    });
-    if (!response.ok) return null;
-
-    const raw = (await response.json()) as BezelModelApiEntry | { model?: BezelModelApiEntry; data?: BezelModelApiEntry };
-
-    const entry: BezelModelApiEntry = 'price' in raw || 'value' in raw
-      ? (raw as BezelModelApiEntry)
-      : (raw as { model?: BezelModelApiEntry }).model ??
-        (raw as { data?: BezelModelApiEntry }).data ??
-        (raw as BezelModelApiEntry);
-
-    const price = entry.price ?? entry.value;
-    if (price == null || !Number.isFinite(price)) return null;
-
-    const dailyChange = entry.daily_change ?? entry.change ?? null;
-    const dailyChangePct =
-      entry.daily_change_pct ?? entry.change_pct ?? entry.changePct ?? null;
-
-    return {
-      slug,
-      entityType: 'model',
-      name: entry.name ?? entry.title ?? slug,
-      price,
-      dailyChange: dailyChange !== undefined ? dailyChange : null,
-      dailyChangePct: dailyChangePct !== undefined ? dailyChangePct : null,
-      volume: null,
-      capturedAt: new Date().toISOString(),
-      dataSourceQuality: 'frontend_network_capture',
-      rawPayload: entry,
-    };
-  } catch {
-    return null;
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Strategy 2: HTML scraping
-// ---------------------------------------------------------------------------
-
-function extractPriceFromHtml(html: string, slug: string): number | null {
-  // Try various patterns for price text in the HTML
-  const patterns = [
-    /\$\s*([\d,]+(?:\.\d{2})?)/g,
-    /"price"\s*:\s*([\d.]+)/g,
-    /"value"\s*:\s*([\d.]+)/g,
-    /data-price="([\d.]+)"/g,
-    /class="[^"]*price[^"]*"[^>]*>\$?\s*([\d,]+(?:\.\d{2})?)/gi,
-  ];
-
-  const candidates: number[] = [];
-  for (const pattern of patterns) {
-    let match: RegExpExecArray | null;
-    const re = new RegExp(pattern.source, pattern.flags);
-    while ((match = re.exec(html)) !== null) {
-      const raw = match[1].replace(/,/g, '');
-      const val = parseFloat(raw);
-      // Bezel prices are typically in the $100–$100,000 range
-      if (Number.isFinite(val) && val > 50 && val < 1_000_000) {
-        candidates.push(val);
-      }
+  /**
+   * Fetch the current price for a Bezel entity using a 4-tier fallback chain.
+   *
+   * @param slug       - Entity slug, e.g. "cartier-index"
+   * @param entityType - "index" or "model"
+   * @param url        - Canonical Bezel URL for this entity
+   */
+  async fetchEntityPrice(
+    slug: string,
+    entityType: BezelEntityType,
+    url: string,
+  ): Promise<BezelIngestionResult> {
+    // Tier 1 — direct fetch to a previously discovered/cached endpoint
+    const tier1 = await this.tryDirectFetch(slug, entityType);
+    if (tier1 !== null) {
+      console.log(`[BezelProvider] Tier 1 SUCCESS slug=${slug} quality=${tier1.dataSourceQuality}`);
+      return this.buildSuccessResult(slug, tier1);
     }
-  }
+    console.log(`[BezelProvider] Tier 1 MISS slug=${slug} → trying Tier 2`);
 
-  if (candidates.length === 0) return null;
-  // Use the median to avoid outliers
-  candidates.sort((a, b) => a - b);
-  return candidates[Math.floor(candidates.length / 2)];
-}
+    // Tier 2 — Playwright XHR discovery, then direct fetch
+    const tier2 = await this.tryDiscoveryAndFetch(url, slug, entityType);
+    if (tier2 !== null) {
+      console.log(`[BezelProvider] Tier 2 SUCCESS slug=${slug} quality=${tier2.dataSourceQuality}`);
+      return this.buildSuccessResult(slug, tier2);
+    }
+    console.log(`[BezelProvider] Tier 2 MISS slug=${slug} → trying Tier 3`);
 
-async function fetchFromHtml(slug: string, entityType: BezelEntityType): Promise<BezelNormalizedPrice | null> {
-  try {
-    const pageUrl =
-      entityType === 'index'
-        ? BEZEL_INDEXES_PAGE
-        : `${BEZEL_MODEL_PAGE_BASE}/${encodeURIComponent(slug)}`;
+    // Tier 3 — DOM scrape via Playwright
+    const tier3 = await this.tryScrape(url, slug, entityType);
+    if (tier3 !== null) {
+      console.log(`[BezelProvider] Tier 3 SUCCESS slug=${slug} quality=${tier3.dataSourceQuality}`);
+      return this.buildSuccessResult(slug, tier3);
+    }
+    console.log(`[BezelProvider] Tier 3 MISS slug=${slug} → Tier 4 fallback`);
 
-    const response = await fetchWithTimeout(pageUrl, {
-      headers: { Accept: 'text/html' },
-    });
-    if (!response.ok) return null;
-
-    const html = await response.text();
-    const price = extractPriceFromHtml(html, slug);
-    if (price == null) return null;
-
-    return {
-      slug,
-      entityType,
-      name: slug,
-      price,
-      dailyChange: null,
-      dailyChangePct: null,
-      volume: null,
-      capturedAt: new Date().toISOString(),
-      dataSourceQuality: 'html_scrape',
-      rawPayload: { source: pageUrl, priceExtracted: price },
-    };
-  } catch {
-    return null;
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Slug helper
-// ---------------------------------------------------------------------------
-
-function slugify(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '');
-}
-
-// ---------------------------------------------------------------------------
-// Resolve entity metadata from MARKET_MAPPINGS
-// ---------------------------------------------------------------------------
-
-function resolveEntityMeta(slug: string): {
-  entityType: BezelEntityType;
-  brand: string | null;
-  referenceNumber: string | null;
-  bezelUrl: string;
-} {
-  const mapping = MARKET_MAPPINGS.find((m) => m.bezelSlug === slug);
-  return {
-    entityType: mapping?.bezelEntityType ?? 'model',
-    brand: mapping?.brand ?? null,
-    referenceNumber: mapping?.referenceNumber ?? null,
-    bezelUrl:
-      mapping?.bezelUrl ??
-      (mapping?.bezelEntityType === 'index'
-        ? BEZEL_INDEXES_PAGE
-        : `${BEZEL_MODEL_PAGE_BASE}/${slug}`),
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Public: fetchEntityPrice
-// ---------------------------------------------------------------------------
-
-/**
- * Fetch the latest price for a single Bezel entity by slug.
- * Tries the JSON API first, then falls back to HTML scraping.
- * Always returns a result (never throws); on total failure returns success=false.
- */
-export async function fetchEntityPrice(slug: string): Promise<BezelIngestionResult> {
-  const { entityType, brand: _brand, referenceNumber: _ref, bezelUrl: _url } = resolveEntityMeta(slug);
-
-  // Strategy 1: JSON API
-  let normalized: BezelNormalizedPrice | null = null;
-
-  if (entityType === 'index') {
-    normalized = await fetchIndexFromApi(slug);
-  } else {
-    normalized = await fetchModelFromApi(slug);
-  }
-
-  // Strategy 2: HTML scraping
-  if (!normalized) {
-    normalized = await fetchFromHtml(slug, entityType);
-  }
-
-  // Strategy 3: Manual fallback
-  if (!normalized) {
+    // Tier 4 — manual fallback; price is null but the row is still written so
+    // the mapping continues to appear in the dashboard
+    console.warn(
+      `[BezelProvider] All tiers exhausted for slug=${slug}. Writing null-price fallback row.`,
+    );
     return {
       success: false,
       slug,
       quality: 'manual_mapping_fallback',
       price: null,
-      error: `No price data found for slug: ${slug}`,
+      error: `All fetch tiers failed for slug="${slug}". Manual intervention required.`,
     };
   }
 
-  return {
-    success: true,
-    slug,
-    quality: normalized.dataSourceQuality,
-    price: normalized,
-  };
-}
+  // -------------------------------------------------------------------------
+  // Public: history stubs
+  // -------------------------------------------------------------------------
 
-// ---------------------------------------------------------------------------
-// Public: BezelProvider class (optional OOP interface)
-// ---------------------------------------------------------------------------
+  /**
+   * Fetch index price history for a slug.
+   *
+   * Currently returns [] — the DB is the preferred source of truth for history
+   * data, populated by repeated ingestion runs. If Bezel ever exposes a public
+   * history endpoint, implement the fetch here and cache the response.
+   */
+  async fetchIndexHistory(_slug: string): Promise<BezelHistoryPoint[]> {
+    // TODO: implement when Bezel exposes a /api/indexes/:slug/history endpoint
+    return [];
+  }
 
-export class BezelProvider {
-  async fetchEntityPrice(slug: string): Promise<BezelIngestionResult> {
-    return fetchEntityPrice(slug);
+  /**
+   * Fetch model price history for a slug / URL.
+   * Same rationale as fetchIndexHistory.
+   */
+  async fetchModelHistory(_slug: string, _url: string): Promise<BezelHistoryPoint[]> {
+    // TODO: implement when Bezel exposes a /api/models/:slug/history endpoint
+    return [];
+  }
+
+  // -------------------------------------------------------------------------
+  // Tier 1 — direct fetch to a cached/known endpoint
+  // -------------------------------------------------------------------------
+
+  /**
+   * Look up any previously discovered endpoints for this slug in the in-memory
+   * cache. For each one, attempt a direct HTTP fetch and normalise the response.
+   * Returns the first successfully normalised price, or null.
+   */
+  private async tryDirectFetch(
+    slug: string,
+    entityType: BezelEntityType,
+  ): Promise<BezelNormalizedPrice | null> {
+    const cached = this.endpointCache.get(slug);
+    if (!cached || cached.length === 0) return null;
+
+    console.log(
+      `[BezelProvider] Tier 1: trying ${cached.length} cached endpoint(s) for slug=${slug}`,
+    );
+
+    for (const endpoint of cached) {
+      try {
+        const result = await this.fetchAndNormalize(endpoint, slug, entityType);
+        if (result !== null) return result;
+      } catch (err) {
+        console.warn(
+          `[BezelProvider] Tier 1: fetchAndNormalize failed for ${endpoint.url}:`,
+          err,
+        );
+      }
+    }
+    return null;
+  }
+
+  // -------------------------------------------------------------------------
+  // Tier 2 — XHR discovery, then fetch
+  // -------------------------------------------------------------------------
+
+  /**
+   * Run Playwright XHR discovery against `url`, store the discovered endpoints
+   * in the in-memory cache (making them available for Tier 1 next run), then
+   * attempt a direct HTTP fetch to each discovered endpoint in score order.
+   * Returns the first successfully normalised price, or null.
+   */
+  private async tryDiscoveryAndFetch(
+    url: string,
+    slug: string,
+    entityType: BezelEntityType,
+  ): Promise<BezelNormalizedPrice | null> {
+    try {
+      console.log(`[BezelProvider] Tier 2: running XHR discovery on ${url}`);
+      const endpoints = await discoverBezelEndpoints(url, slug);
+
+      if (endpoints.length === 0) {
+        console.log(`[BezelProvider] Tier 2: no endpoints discovered for ${url}`);
+        return null;
+      }
+
+      // Persist in cache so Tier 1 can skip the browser on the next call
+      this.endpointCache.set(slug, endpoints);
+
+      for (const endpoint of endpoints) {
+        try {
+          const result = await this.fetchAndNormalize(endpoint, slug, entityType);
+          if (result !== null) return result;
+        } catch (err) {
+          console.warn(
+            `[BezelProvider] Tier 2: fetchAndNormalize failed for ${endpoint.url}:`,
+            err,
+          );
+        }
+      }
+    } catch (err) {
+      console.warn(
+        `[BezelProvider] Tier 2: discoverBezelEndpoints threw for url=${url}:`,
+        err,
+      );
+    }
+    return null;
+  }
+
+  // -------------------------------------------------------------------------
+  // Tier 3 — DOM scrape
+  // -------------------------------------------------------------------------
+
+  /**
+   * Fall back to full Playwright DOM scraping.
+   *
+   * For indexes: scrapes the index list page and finds the entry matching slug.
+   * For models:  scrapes the model detail page directly.
+   */
+  private async tryScrape(
+    url: string,
+    slug: string,
+    entityType: BezelEntityType,
+  ): Promise<BezelNormalizedPrice | null> {
+    try {
+      if (entityType === 'index') {
+        // Navigate to the index listing page — normalise the URL
+        const indexUrl = url.includes('/indexes')
+          ? url
+          : `${this.bezelBaseUrl}/indexes`;
+
+        console.log(`[BezelProvider] Tier 3: scraping index page ${indexUrl}`);
+        const all = await scrapeBezelIndexPage(indexUrl);
+
+        if (all.length === 0) {
+          console.warn(`[BezelProvider] Tier 3: index scrape returned 0 entries`);
+          return null;
+        }
+
+        // Match by first slug keyword, e.g. "cartier" from "cartier-index"
+        const keyword = slug.split('-')[0].toLowerCase();
+
+        const match = all.find(
+          (p) =>
+            p.slug.toLowerCase().includes(keyword) ||
+            p.name.toLowerCase().includes(keyword),
+        );
+
+        if (match) {
+          // Re-stamp with the canonical slug so it maps correctly in the DB
+          return { ...match, slug };
+        }
+
+        // If only one entry was found, use it regardless (single-index pages)
+        if (all.length === 1) {
+          console.log(
+            `[BezelProvider] Tier 3: single index entry found; assigning slug=${slug}`,
+          );
+          return { ...all[0], slug };
+        }
+
+        console.warn(
+          `[BezelProvider] Tier 3: ${all.length} index entries scraped but none matched slug=${slug}`,
+        );
+        return null;
+      } else {
+        // Model page — direct scrape
+        console.log(`[BezelProvider] Tier 3: scraping model page ${url}`);
+        return await scrapeBezelModelPage(url, slug);
+      }
+    } catch (err) {
+      console.warn(`[BezelProvider] Tier 3: scrape threw for slug=${slug}:`, err);
+      return null;
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Internal helpers
+  // -------------------------------------------------------------------------
+
+  /**
+   * Perform a direct HTTP fetch to a discovered endpoint (no browser), parse
+   * the JSON body, and normalise it into a BezelNormalizedPrice.
+   *
+   * Uses validateDiscoveredEndpoint which handles timeout, status check, and
+   * content-type validation. Returns null on any failure.
+   */
+  private async fetchAndNormalize(
+    endpoint: BezelDiscoveredEndpoint,
+    slug: string,
+    entityType: BezelEntityType,
+  ): Promise<BezelNormalizedPrice | null> {
+    const body = await validateDiscoveredEndpoint(endpoint);
+    if (body === null) {
+      console.log(
+        `[BezelProvider] fetchAndNormalize: endpoint no longer valid — ${endpoint.url}`,
+      );
+      return null;
+    }
+
+    const normalized =
+      entityType === 'index'
+        ? normalizeBezelIndexResponse(body, slug)
+        : normalizeBezelModelResponse(body, slug);
+
+    if (normalized !== null) {
+      // Tag as network-captured (we fetched a real JSON endpoint, not DOM)
+      return { ...normalized, dataSourceQuality: 'frontend_network_capture' };
+    }
+
+    console.log(
+      `[BezelProvider] fetchAndNormalize: normalizer returned null for ${endpoint.url} slug=${slug}`,
+    );
+    return null;
+  }
+
+  /** Build a successful BezelIngestionResult from a normalised price. */
+  private buildSuccessResult(
+    slug: string,
+    price: BezelNormalizedPrice,
+  ): BezelIngestionResult {
+    return {
+      success: true,
+      slug,
+      quality: price.dataSourceQuality,
+      price,
+    };
   }
 }
 
-export function createBezelProvider(): BezelProvider {
-  return new BezelProvider();
-}
+// ---------------------------------------------------------------------------
+// Singleton export
+// ---------------------------------------------------------------------------
+
+/**
+ * Shared singleton instance of BezelProvider.
+ * Import this in ingestion jobs rather than constructing a new instance,
+ * so that the in-memory endpoint cache is reused across calls within the
+ * same process lifetime.
+ */
+export const bezelProvider = new BezelProvider();
