@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dir \"C:\\\\Users\\\\betti\\\\OneDrive\\\\Desktop\\\\SSC\\\\Bezel_Watches\" /B)",
+      "Bash(python3 -c \":*)",
+      "Bash(mkdir -p \"/c/Users/betti/OneDrive/Desktop/SSC/Bezel_Watches/src/app/markets/[ticker]\")",
+      "Bash(mkdir -p \"/c/Users/betti/OneDrive/Desktop/SSC/Bezel_Watches/src/app/api/kalshi/market/[ticker]/orderbook\")",
+      "Bash(mkdir -p \"/c/Users/betti/OneDrive/Desktop/SSC/Bezel_Watches/src/app/api/bezel/entity/[slug]/history\")",
+      "Bash(mkdir -p \"/c/Users/betti/OneDrive/Desktop/SSC/Bezel_Watches/src/app/api/model/[ticker]\")"
+    ]
+  }
+}

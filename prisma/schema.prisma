@@ -1,0 +1,206 @@
+// Bezel-Kalshi Dashboard — Prisma Schema
+// Database: PostgreSQL
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Kalshi Markets
+// ---------------------------------------------------------------------------
+
+model KalshiMarket {
+  id               String    @id @default(cuid())
+  ticker           String    @unique
+  eventTicker      String?
+  seriesTicker     String?
+  title            String
+  subtitle         String?
+  status           String    @default("open")
+  expirationDate   DateTime?
+  closeDate        DateTime?
+  rulesText        String?   @db.Text
+  resolvedStrike   Float?
+  strikeDirection  String?
+  strikeCondition  String?
+  kalshiUrl        String
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  snapshots       KalshiMarketSnapshot[]
+  orderbookSnaps  KalshiOrderbookSnapshot[]
+  mapping         MarketMapping?
+  probabilityRuns ProbabilityRun[]
+
+  @@index([ticker])
+}
+
+model KalshiMarketSnapshot {
+  id           String       @id @default(cuid())
+  marketId     String
+  market       KalshiMarket @relation(fields: [marketId], references: [id])
+  capturedAt   DateTime     @default(now())
+  yesPrice     Float
+  noPrice      Float
+  volume       Float
+  openInterest Float?
+  lastPrice    Float?
+  impliedProb  Float
+  status       String
+
+  @@index([marketId, capturedAt])
+}
+
+model KalshiOrderbookSnapshot {
+  id         String       @id @default(cuid())
+  marketId   String
+  market     KalshiMarket @relation(fields: [marketId], references: [id])
+  capturedAt DateTime     @default(now())
+  yesBids    Json
+  noBids     Json
+  bestYesBid Float?
+  bestNoBid  Float?
+  spread     Float?
+  midpoint   Float?
+
+  @@index([marketId, capturedAt])
+}
+
+// ---------------------------------------------------------------------------
+// Bezel Entities (indexes or individual watch models)
+// ---------------------------------------------------------------------------
+
+model BezelEntity {
+  id                 String   @id @default(cuid())
+  /// URL-safe slug, e.g. "rolex-index" or "rolex-submariner-date-41-starbucks"
+  slug               String   @unique
+  /// "index" | "model"
+  entityType         String
+  name               String
+  brand              String?
+  referenceNumber    String?
+  bezelUrl           String
+  discoveredEndpoint String?
+  scraperConfig      Json?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  priceSnapshots BezelPriceSnapshot[]
+  mappings       MarketMapping[]
+}
+
+model BezelPriceSnapshot {
+  id                String      @id @default(cuid())
+  entityId          String
+  entity            BezelEntity @relation(fields: [entityId], references: [id])
+  capturedAt        DateTime    @default(now())
+  price             Float
+  dailyChange       Float?
+  dailyChangePct    Float?
+  volume            Float?
+  /// "official_api" | "frontend_network_capture" | "html_scrape" | "manual_mapping_fallback"
+  dataSourceQuality String
+  rawPayload        Json?
+
+  @@index([entityId, capturedAt])
+  @@index([capturedAt])
+}
+
+// ---------------------------------------------------------------------------
+// Mapping: Kalshi market ↔ Bezel entity
+// ---------------------------------------------------------------------------
+
+model MarketMapping {
+  id               String      @id @default(cuid())
+  kalshiTicker     String      @unique
+  kalshiMarketId   String      @unique
+  kalshiMarket     KalshiMarket @relation(fields: [kalshiMarketId], references: [id])
+  bezelEntityId    String
+  bezelEntity      BezelEntity  @relation(fields: [bezelEntityId], references: [id])
+  strikeValue      Float?
+  strikeDirection  String?
+  strikeParsedFrom String?
+  notes            String?     @db.Text
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+}
+
+// ---------------------------------------------------------------------------
+// Probability / model outputs
+// ---------------------------------------------------------------------------
+
+model ProbabilityRun {
+  id                    String       @id @default(cuid())
+  marketId              String
+  market                KalshiMarket @relation(fields: [marketId], references: [id])
+  mappingId             String?
+  runAt                 DateTime     @default(now())
+  currentLevel          Float
+  strike                Float
+  strikeDirection       String
+  daysToExpiry          Float
+  volWindow             Int
+  realizedVol           Float
+  annualizedVol         Float
+  probabilityAbove      Float
+  probabilityBelow      Float
+  expectedPriceAtExpiry Float
+  oneSigmaMove          Float
+  kalshiImpliedProb     Float?
+  modelEdge             Float?
+  confidenceScore       Float?
+  modelType             String
+  mcPaths               Int?
+  percentileBands       Json?
+  scenarioTable         Json?
+  inputParams           Json
+
+  @@index([marketId, runAt])
+}
+
+// ---------------------------------------------------------------------------
+// Correlation metrics
+// ---------------------------------------------------------------------------
+
+model CorrelationMetric {
+  id           String   @id @default(cuid())
+  computedAt   DateTime @default(now())
+  entity1Id    String
+  entity2Id    String
+  entity1Type  String
+  entity2Type  String
+  lookbackDays Int
+  correlation  Float
+  lagDays      Int      @default(0)
+  regime       String?
+  sampleSize   Int
+
+  @@index([entity1Id, entity2Id, lookbackDays, computedAt])
+}
+
+// ---------------------------------------------------------------------------
+// Ingestion / scraper audit log
+// ---------------------------------------------------------------------------
+
+model IngestionLog {
+  id             String    @id @default(cuid())
+  jobName        String
+  startedAt      DateTime  @default(now())
+  finishedAt     DateTime?
+  /// "running" | "success" | "partial" | "failed"
+  status         String
+  sourceType     String
+  entityId       String?
+  entityTicker   String?
+  recordsWritten Int?
+  errorMessage   String?   @db.Text
+  metadata       Json?
+
+  @@index([jobName, startedAt])
+  @@index([status])
+}

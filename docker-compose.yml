@@ -1,0 +1,48 @@
+version: '3.9'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: bezel_kalshi_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: bezel_user
+      POSTGRES_PASSWORD: bezel_password
+      POSTGRES_DB: bezel_kalshi
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U bezel_user -d bezel_kalshi']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: bezel_kalshi_app
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://bezel_user:bezel_password@postgres:5432/bezel_kalshi
+      NODE_ENV: production
+      KALSHI_BASE_URL: ${KALSHI_BASE_URL:-https://api.elections.kalshi.com/trade-api/v2}
+      KALSHI_API_KEY: ${KALSHI_API_KEY:-}
+      BEZEL_BASE_URL: ${BEZEL_BASE_URL:-https://markets.getbezel.com}
+      CRON_SECRET: ${CRON_SECRET}
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      PLAYWRIGHT_HEADLESS: 'true'
+    ports:
+      - '3000:3000'
+    volumes:
+      - playwright_cache:/root/.cache/ms-playwright
+
+volumes:
+  postgres_data:
+  playwright_cache:

@@ -1,0 +1,8 @@
+{
+  "crons": [
+    { "path": "/api/jobs/refresh-kalshi",        "schedule": "*/15 * * * *" },
+    { "path": "/api/jobs/refresh-bezel",         "schedule": "0 * * * *"   },
+    { "path": "/api/jobs/compute-probabilities", "schedule": "5 * * * *"   },
+    { "path": "/api/jobs/compute-correlations",  "schedule": "0 */6 * * *" }
+  ]
+}
