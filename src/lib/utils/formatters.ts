@@ -99,3 +99,26 @@ export function formatEdge(edge: number | null): string {
   const sign = bps >= 0 ? '+' : '';
   return `${sign}${bps} bps`;
 }
+
+/**
+ * Map a Pearson correlation value in [-1, 1] to an RGB background color.
+ * -1 → red (204,51,51), 0 → white (255,255,255), +1 → green (51,204,51).
+ * Used by the CorrelationHeatmap component.
+ */
+export function correlationColor(value: number): string {
+  const clamped = Math.max(-1, Math.min(1, value));
+  if (clamped >= 0) {
+    // 0 → white, +1 → green
+    const r = Math.round(255 - 204 * clamped);
+    const g = Math.round(255 - 51 * clamped);
+    const b = Math.round(255 - 204 * clamped);
+    return `rgb(${r},${g},${b})`;
+  } else {
+    // -1 → red, 0 → white
+    const abs = Math.abs(clamped);
+    const r = Math.round(255 - 51 * abs);
+    const g = Math.round(255 - 204 * abs);
+    const b = Math.round(255 - 204 * abs);
+    return `rgb(${r},${g},${b})`;
+  }
+}

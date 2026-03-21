@@ -118,6 +118,7 @@ export interface ProbabilityInputs {
   tradingDaysToExpiry: number;
   volWindow: VolatilityWindow;
   modelType: ProbabilityModelType;
+  kalshiImpliedProb?: number | null;
   mcPaths?: number;
   includeScenarioTable?: boolean;
 }

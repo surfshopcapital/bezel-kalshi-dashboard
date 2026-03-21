@@ -77,10 +77,7 @@ export async function computeProbabilitiesJob(): Promise<ProbabilitiesResult> {
 
       // Load price history
       const since = new Date(Date.now() - DEFAULT_LOOKBACK_DAYS * 24 * 60 * 60 * 1000);
-      const history = await getBezelPriceHistory(bezelEntity.id, {
-        since,
-        limit: DEFAULT_LOOKBACK_DAYS,
-      });
+      const history = await getBezelPriceHistory(bezelEntity.slug, DEFAULT_LOOKBACK_DAYS, since);
 
       if (history.length < MIN_DATA_POINTS) {
         const msg = `Insufficient data (${history.length} points, need ${MIN_DATA_POINTS}) for ${mapping.bezelSlug}`;
@@ -113,7 +110,7 @@ export async function computeProbabilitiesJob(): Promise<ProbabilitiesResult> {
         'above';
 
       // Load latest Kalshi snapshot for implied probability
-      const latestSnap = await getLatestKalshiSnapshot(kalshiMarket.id);
+      const latestSnap = await getLatestKalshiSnapshot(kalshiMarket.ticker);
       const kalshiImpliedProb = latestSnap?.impliedProb ?? null;
 
       // Build model inputs
@@ -151,8 +148,8 @@ export async function computeProbabilitiesJob(): Promise<ProbabilitiesResult> {
         confidenceScore: output.confidenceScore,
         modelType: output.modelType,
         mcPaths: output.mcPaths,
-        percentileBands: output.percentileBands,
-        scenarioTable: output.scenarioTable,
+        percentileBands: output.percentileBands as unknown as import('@prisma/client').Prisma.InputJsonValue,
+        scenarioTable: output.scenarioTable as unknown as import('@prisma/client').Prisma.InputJsonValue,
         inputParams: {
           priceHistoryLength: priceHistory.length,
           volWindow: inputs.volWindow,

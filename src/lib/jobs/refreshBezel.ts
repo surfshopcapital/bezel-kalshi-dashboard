@@ -5,7 +5,7 @@
  * price via the Bezel provider, upserts the BezelEntity row, and appends
  * a BezelPriceSnapshot. Records ingestion logs for audit purposes.
  */
-import { fetchEntityPrice } from '@/lib/bezel/provider';
+import { bezelProvider } from '@/lib/bezel/provider';
 import {
   upsertBezelEntity,
   appendBezelPriceSnapshot,
@@ -31,7 +31,7 @@ export async function bezelIngestionJob(): Promise<BezelRefreshResult> {
   log.info('Starting Bezel ingestion', { slugCount: uniqueSlugs.length });
 
   for (const slug of uniqueSlugs) {
-    // Find the canonical mapping for this slug (take the first one)
+    // Find the canonical mapping config for this slug (take the first one)
     const mapping = MARKET_MAPPINGS.find((m) => m.bezelSlug === slug);
     if (!mapping) {
       log.warn('No mapping found for slug', { slug });
@@ -39,37 +39,42 @@ export async function bezelIngestionJob(): Promise<BezelRefreshResult> {
       continue;
     }
 
-    const ingestionLog = await startIngestionLog('refreshBezel', 'bezel_provider', undefined, slug);
+    const ingestionLog = await startIngestionLog(
+      'refreshBezel',
+      'bezel_provider',
+      undefined,
+      slug,
+    );
 
     try {
-      log.info('Fetching Bezel entity', { slug });
+      log.info('Fetching Bezel entity', { slug, entityType: mapping.bezelEntityType });
 
-      const ingestionResult = await fetchEntityPrice(slug);
+      const ingestionResult = await bezelProvider.fetchEntityPrice(
+        slug,
+        mapping.bezelEntityType,
+        mapping.bezelUrl,
+      );
+
+      // Always upsert the entity record so the mapping row can reference it
+      const entity = await upsertBezelEntity({
+        slug,
+        entityType: mapping.bezelEntityType,
+        name: ingestionResult.price?.name ?? slug,
+        brand: mapping.brand,
+        referenceNumber: mapping.referenceNumber ?? null,
+        bezelUrl: mapping.bezelUrl,
+      });
 
       if (!ingestionResult.success || !ingestionResult.price) {
         const errorMsg = ingestionResult.error ?? `No price data returned for ${slug}`;
         log.warn('Bezel fetch returned no price', { slug, error: errorMsg });
 
-        // Still upsert the entity so the mapping works, but with a null price
-        const entity = await upsertBezelEntity({
-          slug,
-          entityType: mapping.bezelEntityType,
-          name: slug,
-          brand: mapping.brand,
-          referenceNumber: mapping.referenceNumber ?? null,
-          bezelUrl: mapping.bezelUrl,
-        });
-
-        // Record a manual_mapping_fallback snapshot so the entity exists
+        // Append a null-price fallback snapshot so the entity has a row
         await appendBezelPriceSnapshot(entity.id, {
-          slug,
-          entityType: mapping.bezelEntityType,
-          name: slug,
           price: 0,
           dailyChange: null,
           dailyChangePct: null,
           volume: null,
-          capturedAt: new Date().toISOString(),
           dataSourceQuality: 'manual_mapping_fallback',
           rawPayload: { error: errorMsg },
         });
@@ -82,18 +87,15 @@ export async function bezelIngestionJob(): Promise<BezelRefreshResult> {
 
       const normalized = ingestionResult.price;
 
-      // Upsert the BezelEntity record
-      const entity = await upsertBezelEntity({
-        slug,
-        entityType: normalized.entityType,
-        name: normalized.name,
-        brand: mapping.brand,
-        referenceNumber: mapping.referenceNumber ?? null,
-        bezelUrl: mapping.bezelUrl,
-      });
-
       // Append the price snapshot
-      await appendBezelPriceSnapshot(entity.id, normalized);
+      await appendBezelPriceSnapshot(entity.id, {
+        price: normalized.price,
+        dailyChange: normalized.dailyChange,
+        dailyChangePct: normalized.dailyChangePct,
+        volume: normalized.volume,
+        dataSourceQuality: normalized.dataSourceQuality,
+        rawPayload: normalized.rawPayload as object,
+      });
 
       await finishIngestionLog(ingestionLog.id, 'success', 1);
       result.success++;

@@ -98,8 +98,9 @@ async function navigatePage(
  * @param selectors - CSS selector string (possibly comma-separated alternatives)
  * @param label  - Human-readable label used in log messages
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function trySelectors(
-  scope: Parameters<typeof scope.$(string)>[0] extends never ? never : Awaited<ReturnType<Awaited<ReturnType<typeof chromium.launch>>['newPage']>> | import('playwright').ElementHandle,
+  scope: any,
   selectors: string,
   label: string,
 ): Promise<string | null> {

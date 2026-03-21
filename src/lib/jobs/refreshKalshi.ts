@@ -61,8 +61,8 @@ export async function refreshKalshiJob(): Promise<RefreshResult> {
       const orderbook = normalizeOrderbook(rawOrderbook);
 
       await appendOrderbookSnapshot(market.id, {
-        yesBids: orderbook.yesBids,
-        noBids: orderbook.noBids,
+        yesBids: orderbook.yesBids as unknown as import('@prisma/client').Prisma.InputJsonValue,
+        noBids: orderbook.noBids as unknown as import('@prisma/client').Prisma.InputJsonValue,
         bestYesBid: orderbook.bestYesBid,
         bestNoBid: orderbook.bestNoBid,
         spread: orderbook.spread,
