@@ -19,12 +19,16 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 300; // 5 min — backfill may take longer than the 2-min default
 
 export async function GET(request: NextRequest) {
-  const authHeader = request.headers.get('authorization');
-  if (
-    process.env.CRON_SECRET &&
-    authHeader !== `Bearer ${process.env.CRON_SECRET}`
-  ) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  // Accept CRON_SECRET via Authorization header OR ?secret= query param
+  if (process.env.CRON_SECRET) {
+    const authHeader = request.headers.get('authorization');
+    const querySecret = request.nextUrl.searchParams.get('secret');
+    const authorized =
+      authHeader === `Bearer ${process.env.CRON_SECRET}` ||
+      querySecret === process.env.CRON_SECRET;
+    if (!authorized) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
   }
 
   // Parse optional `days` query param (default 90, capped at 365)
