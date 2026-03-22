@@ -17,12 +17,19 @@ export interface MarketMappingConfig {
   bezelEntityType: 'index' | 'model';
   bezelUrl: string;
   /**
-   * Known direct API endpoint on api.bezel.cloud.
+   * Known direct API endpoint on api.bezel.cloud (current price, single point).
    * When set, BezelProvider seeds its in-memory cache with this URL so that
    * Tier 1 (direct HTTP fetch, no Playwright) succeeds immediately.
    * Format: responds with { timestamp: float_seconds, valueCents: integer }.
    */
   bezelApiUrl?: string;
+  /**
+   * Base URL for the historical time-series endpoint on api.bezel.cloud.
+   * Append `?start=ISO8601&end=ISO8601` (or `&start=...&end=...` if the base
+   * URL already contains a `?`) to fetch an array of { timestamp, valueCents }.
+   * Example: "https://api.bezel.cloud/beztimate/indexes/4/data"
+   */
+  bezelHistoryApiUrl?: string;
   brand: string;
   /** Pre-configured strike value; null = parse dynamically from title/rules. */
   strikeValue: number | null;
@@ -41,6 +48,8 @@ export const MARKET_MAPPINGS: MarketMappingConfig[] = [
     bezelUrl: 'https://markets.getbezel.com/indexes',
     // Bezel internal API — index ID 4 = Cartier; returns { timestamp, valueCents }
     bezelApiUrl: 'https://api.bezel.cloud/beztimate/indexes/4/value',
+    // Historical time-series: append ?start=ISO8601&end=ISO8601
+    bezelHistoryApiUrl: 'https://api.bezel.cloud/beztimate/indexes/4/data',
     brand: 'Cartier',
     strikeValue: 5729,
     strikeDirection: 'above',
@@ -55,6 +64,8 @@ export const MARKET_MAPPINGS: MarketMappingConfig[] = [
     bezelUrl: 'https://markets.getbezel.com/indexes',
     // Bezel internal API — index ID 1 = Rolex; returns { timestamp, valueCents }
     bezelApiUrl: 'https://api.bezel.cloud/beztimate/indexes/1/value',
+    // Historical time-series: append ?start=ISO8601&end=ISO8601
+    bezelHistoryApiUrl: 'https://api.bezel.cloud/beztimate/indexes/1/data',
     brand: 'Rolex',
     strikeValue: 12937,
     strikeDirection: 'above',
@@ -70,6 +81,9 @@ export const MARKET_MAPPINGS: MarketMappingConfig[] = [
     // Bezel internal API — composite modelId 197 = Submariner Date 41 "Starbucks" 126610LV-0002
     bezelApiUrl:
       'https://api.bezel.cloud/beztimate/composites/1/value?modelId=197&condition=PREOWNED&withBox=true&withPapers=true',
+    // Historical time-series: append &start=ISO8601&end=ISO8601
+    bezelHistoryApiUrl:
+      'https://api.bezel.cloud/beztimate/composites/1/data?modelId=197&condition=PREOWNED&withBox=true&withPapers=true',
     brand: 'Rolex',
     strikeValue: 14026,
     strikeDirection: 'above',

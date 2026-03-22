@@ -363,6 +363,54 @@ export async function upsertBezelEntity(data: {
 }
 
 /**
+ * Insert a single BezelPriceSnapshot with an explicit timestamp.
+ * Used by backfill jobs to insert historical data points at their original
+ * timestamps rather than the current wall-clock time.
+ *
+ * Deduplication: skips the insert when an existing snapshot for this entity
+ * already exists within ±6 hours of `capturedAt` to prevent duplicate rows on
+ * repeated backfill runs.
+ *
+ * @param entityId  - BezelEntity primary key (cuid)
+ * @param capturedAt - Timestamp of the historical data point
+ * @param data       - Price data from the Bezel history API
+ * @returns The created snapshot, or null when a duplicate was detected.
+ */
+export async function insertBezelPriceSnapshotAtTime(
+  entityId: string,
+  capturedAt: Date,
+  data: BezelPriceSnapshotInput,
+): Promise<BezelPriceSnapshot | null> {
+  // Check for existing snapshot within ±6 h of this timestamp
+  const windowMs = 6 * 60 * 60 * 1000;
+  const existing = await prisma.bezelPriceSnapshot.findFirst({
+    where: {
+      entityId,
+      capturedAt: {
+        gte: new Date(capturedAt.getTime() - windowMs),
+        lte: new Date(capturedAt.getTime() + windowMs),
+      },
+    },
+    select: { id: true },
+  });
+
+  if (existing) return null; // duplicate — skip
+
+  return prisma.bezelPriceSnapshot.create({
+    data: {
+      entityId,
+      capturedAt,
+      price: data.price,
+      dailyChange: data.dailyChange ?? null,
+      dailyChangePct: data.dailyChangePct ?? null,
+      volume: data.volume ?? null,
+      dataSourceQuality: data.dataSourceQuality,
+      rawPayload: data.rawPayload ?? Prisma.JsonNull,
+    },
+  });
+}
+
+/**
  * Append a price snapshot for a BezelEntity.
  *
  * @param entityId - BezelEntity primary key (cuid)
