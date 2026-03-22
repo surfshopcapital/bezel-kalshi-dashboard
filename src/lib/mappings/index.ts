@@ -3,10 +3,19 @@
  *
  * Add new markets here — the seed script and ingestion jobs read from this list.
  *
- * Real tickers discovered from Kalshi API (March 2026):
- *   KXCARTIER-MAR-5729     → Bezel Cartier Index,  strike $5,729,  expires 2026-04-01
- *   KXROLEX-MAR-12937      → Bezel Rolex Index,    strike $12,937, expires 2026-04-01
- *   KXBEZELRSUB41LV-MAR-14026 → Rolex Sub 126610LV, strike $14,026, expires 2026-03-31
+ * All 8 active markets (March 2026):
+ *
+ * === 4 INDEXES ===
+ *   KXROLEX-MAR-12937         → Bezel Rolex Index,   index ID 1,  strike $12,937, expires 2026-04-01
+ *   KXTUDOR-MAR-3662          → Bezel Tudor Index,   index ID 2,  strike $3,662,  expires 2026-04-01
+ *   KXOMEGA-MAR-5507          → Bezel Omega Index,   index ID 3,  strike $5,507,  expires 2026-04-01
+ *   KXCARTIER-MAR-5729        → Bezel Cartier Index, index ID 4,  strike $5,729,  expires 2026-04-01
+ *
+ * === 4 INDIVIDUAL MODELS ===
+ *   KXBEZELRSUB41LV-MAR-14026 → Rolex Sub 41 "Starbucks" 126610LV,  modelId 197,  strike $14,026, expires 2026-03-31
+ *   KXBEZELRSUB41D-MAR-13129  → Rolex Sub 41 Date 126610LN,          modelId 61,   strike $13,129, expires 2026-04-01
+ *   KXBEZELTBBGMT-MAR-3309    → Tudor Black Bay GMT M79830RB-0001,    modelId 846,  strike $3,309,  expires 2026-03-31
+ *   KXBEZELOMOON-MAR-6831     → Omega Speedmaster Moonwatch 3861,     modelId 1001, strike $6,831,  expires 2026-03-31
  */
 
 export interface MarketMappingConfig {
@@ -39,32 +48,18 @@ export interface MarketMappingConfig {
 }
 
 export const MARKET_MAPPINGS: MarketMappingConfig[] = [
-  {
-    kalshiTicker: 'KXCARTIER-MAR-5729',
-    kalshiEventTicker: 'KXCARTIER-MAR',
-    kalshiUrl: 'https://kalshi.com/markets/kxcartier-mar/kxcartier-mar-5729',
-    bezelSlug: 'cartier-index',
-    bezelEntityType: 'index',
-    bezelUrl: 'https://markets.getbezel.com/indexes',
-    // Bezel internal API — index ID 4 = Cartier; returns { timestamp, valueCents }
-    bezelApiUrl: 'https://api.bezel.cloud/beztimate/indexes/4/value',
-    // Historical time-series: append ?start=ISO8601&end=ISO8601
-    bezelHistoryApiUrl: 'https://api.bezel.cloud/beztimate/indexes/4/data',
-    brand: 'Cartier',
-    strikeValue: 5729,
-    strikeDirection: 'above',
-    notes: 'Cartier Watch Index monthly contract — resolves against Bezel Cartier index; strike $5,729',
-  },
+  // =========================================================================
+  // INDEXES
+  // =========================================================================
   {
     kalshiTicker: 'KXROLEX-MAR-12937',
     kalshiEventTicker: 'KXROLEX-MAR',
-    kalshiUrl: 'https://kalshi.com/markets/kxrolex-mar/kxrolex-mar-12937',
+    kalshiUrl: 'https://kalshi.com/markets/kxrolex/will-the-rolex-index-be-up-or-down-this-month-bezel/kxrolex-mar',
     bezelSlug: 'rolex-index',
     bezelEntityType: 'index',
     bezelUrl: 'https://markets.getbezel.com/indexes',
     // Bezel internal API — index ID 1 = Rolex; returns { timestamp, valueCents }
     bezelApiUrl: 'https://api.bezel.cloud/beztimate/indexes/1/value',
-    // Historical time-series: append ?start=ISO8601&end=ISO8601
     bezelHistoryApiUrl: 'https://api.bezel.cloud/beztimate/indexes/1/data',
     brand: 'Rolex',
     strikeValue: 12937,
@@ -72,24 +67,127 @@ export const MARKET_MAPPINGS: MarketMappingConfig[] = [
     notes: 'Rolex Watch Index monthly contract — resolves against Bezel Rolex index; strike $12,937',
   },
   {
+    kalshiTicker: 'KXTUDOR-MAR-3662',
+    kalshiEventTicker: 'KXTUDOR-MAR',
+    kalshiUrl: 'https://kalshi.com/markets/kxtudor/tudor-index/kxtudor-mar',
+    bezelSlug: 'tudor-index',
+    bezelEntityType: 'index',
+    bezelUrl: 'https://markets.getbezel.com/indexes',
+    // Bezel internal API — index ID 2 = Tudor; returns { timestamp, valueCents }
+    bezelApiUrl: 'https://api.bezel.cloud/beztimate/indexes/2/value',
+    bezelHistoryApiUrl: 'https://api.bezel.cloud/beztimate/indexes/2/data',
+    brand: 'Tudor',
+    strikeValue: 3662,
+    strikeDirection: 'above',
+    notes: 'Tudor Watch Index monthly contract — resolves against Bezel Tudor index; strike $3,662',
+  },
+  {
+    kalshiTicker: 'KXOMEGA-MAR-5507',
+    kalshiEventTicker: 'KXOMEGA-MAR',
+    kalshiUrl: 'https://kalshi.com/markets/kxomega/omega-index/kxomega-mar',
+    bezelSlug: 'omega-index',
+    bezelEntityType: 'index',
+    bezelUrl: 'https://markets.getbezel.com/indexes',
+    // Bezel internal API — index ID 3 = Omega; returns { timestamp, valueCents }
+    bezelApiUrl: 'https://api.bezel.cloud/beztimate/indexes/3/value',
+    bezelHistoryApiUrl: 'https://api.bezel.cloud/beztimate/indexes/3/data',
+    brand: 'Omega',
+    strikeValue: 5507,
+    strikeDirection: 'above',
+    notes: 'Omega Watch Index monthly contract — resolves against Bezel Omega index; strike $5,507',
+  },
+  {
+    kalshiTicker: 'KXCARTIER-MAR-5729',
+    kalshiEventTicker: 'KXCARTIER-MAR',
+    kalshiUrl: 'https://kalshi.com/markets/kxcartier/cartier-index/kxcartier-mar',
+    bezelSlug: 'cartier-index',
+    bezelEntityType: 'index',
+    bezelUrl: 'https://markets.getbezel.com/indexes',
+    // Bezel internal API — index ID 4 = Cartier; returns { timestamp, valueCents }
+    bezelApiUrl: 'https://api.bezel.cloud/beztimate/indexes/4/value',
+    bezelHistoryApiUrl: 'https://api.bezel.cloud/beztimate/indexes/4/data',
+    brand: 'Cartier',
+    strikeValue: 5729,
+    strikeDirection: 'above',
+    notes: 'Cartier Watch Index monthly contract — resolves against Bezel Cartier index; strike $5,729',
+  },
+
+  // =========================================================================
+  // INDIVIDUAL MODELS
+  // =========================================================================
+  {
     kalshiTicker: 'KXBEZELRSUB41LV-MAR-14026',
     kalshiEventTicker: 'KXBEZELRSUB41LV-MAR',
-    kalshiUrl: 'https://kalshi.com/markets/kxbezelrsub41lv-mar/kxbezelrsub41lv-mar-14026',
+    kalshiUrl: 'https://kalshi.com/markets/kxbezelrsub41lv/rolex-submariner-date-41-starbucks/kxbezelrsub41lv-mar',
     bezelSlug: 'rolex-submariner-date-41-starbucks',
     bezelEntityType: 'model',
     bezelUrl: 'https://markets.getbezel.com/models/rolex-submariner-date-41-starbucks',
     // Bezel internal API — composite modelId 197 = Submariner Date 41 "Starbucks" 126610LV-0002
     bezelApiUrl:
       'https://api.bezel.cloud/beztimate/composites/1/value?modelId=197&condition=PREOWNED&withBox=true&withPapers=true',
-    // Historical time-series: append &start=ISO8601&end=ISO8601
     bezelHistoryApiUrl:
       'https://api.bezel.cloud/beztimate/composites/1/data?modelId=197&condition=PREOWNED&withBox=true&withPapers=true',
     brand: 'Rolex',
     strikeValue: 14026,
     strikeDirection: 'above',
     referenceNumber: '126610LV',
-    notes:
-      'Rolex Submariner Date 41 "Starbucks" (green bezel, ref 126610LV) — resolves against Bezel model page; strike $14,026',
+    notes: 'Rolex Submariner Date 41 "Starbucks" (green bezel, ref 126610LV-0002); strike $14,026',
+  },
+  {
+    kalshiTicker: 'KXBEZELRSUB41D-MAR-13129',
+    kalshiEventTicker: 'KXBEZELRSUB41D-MAR',
+    kalshiUrl: 'https://kalshi.com/markets/kxbezelrsub41d/rolex-submariner-41-date/kxbezelrsub41d-mar',
+    bezelSlug: 'rolex-submariner-date-41',
+    bezelEntityType: 'model',
+    bezelUrl: 'https://markets.getbezel.com/models/rolex-submariner-date-41',
+    // Bezel internal API — composite modelId 61 = Submariner Date 41 126610LN-0001 (black bezel)
+    bezelApiUrl:
+      'https://api.bezel.cloud/beztimate/composites/1/value?modelId=61&condition=PREOWNED&withBox=true&withPapers=true',
+    bezelHistoryApiUrl:
+      'https://api.bezel.cloud/beztimate/composites/1/data?modelId=61&condition=PREOWNED&withBox=true&withPapers=true',
+    brand: 'Rolex',
+    strikeValue: 13129,
+    strikeDirection: 'above',
+    referenceNumber: '126610LN',
+    notes: 'Rolex Submariner Date 41 (black bezel, ref 126610LN-0001); strike $13,129',
+  },
+  {
+    kalshiTicker: 'KXBEZELTBBGMT-MAR-3309',
+    kalshiEventTicker: 'KXBEZELTBBGMT-MAR',
+    kalshiUrl: 'https://kalshi.com/markets/kxbezeltbbgmt/tudor-black-bay-gmt--bracelet/kxbezeltbbgmt-mar',
+    bezelSlug: 'tudor-black-bay-gmt',
+    bezelEntityType: 'model',
+    bezelUrl: 'https://markets.getbezel.com/models/tudor-black-bay-gmt',
+    // Bezel internal API — composite modelId 846 = Tudor Black Bay GMT / Bracelet M79830RB-0001
+    bezelApiUrl:
+      'https://api.bezel.cloud/beztimate/composites/1/value?modelId=846&condition=PREOWNED&withBox=true&withPapers=true',
+    bezelHistoryApiUrl:
+      'https://api.bezel.cloud/beztimate/composites/1/data?modelId=846&condition=PREOWNED&withBox=true&withPapers=true',
+    brand: 'Tudor',
+    strikeValue: 3309,
+    strikeDirection: 'above',
+    referenceNumber: 'M79830RB',
+    notes: 'Tudor Black Bay GMT / Bracelet (ref M79830RB-0001); strike $3,309',
+  },
+  {
+    kalshiTicker: 'KXBEZELOMOON-MAR-6831',
+    kalshiEventTicker: 'KXBEZELOMOON-MAR',
+    kalshiUrl: 'https://kalshi.com/markets/kxbezelomoon/speedmaster-professional-moonwatch-/kxbezelomoon-mar',
+    bezelSlug: 'omega-speedmaster-moonwatch',
+    bezelEntityType: 'model',
+    bezelUrl: 'https://markets.getbezel.com/models/omega-speedmaster-moonwatch',
+    // Bezel internal API — composite modelId 1001 = Speedmaster Professional Moonwatch 3861
+    // Note: Kalshi references ref 310.30.42.50.01.002 (sapphire/bracelet); Bezel catalog
+    // has modelId 1001 as the closest Speedmaster 3861 match.
+    bezelApiUrl:
+      'https://api.bezel.cloud/beztimate/composites/1/value?modelId=1001&condition=PREOWNED&withBox=true&withPapers=true',
+    bezelHistoryApiUrl:
+      'https://api.bezel.cloud/beztimate/composites/1/data?modelId=1001&condition=PREOWNED&withBox=true&withPapers=true',
+    brand: 'Omega',
+    strikeValue: 6831,
+    strikeDirection: 'above',
+    referenceNumber: '310.30.42.50.01.002',
+    notes: 'Omega Speedmaster Professional Moonwatch 3861 Steel/Sapphire/Bracelet; strike $6,831',
   },
 ];
 
