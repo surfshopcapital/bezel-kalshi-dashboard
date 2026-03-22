@@ -458,7 +458,8 @@ export async function getLatestBezelPrice(
 
 /**
  * Retrieve price history for a BezelEntity identified by slug.
- * Results are ordered oldest-first (ascending capturedAt) for chart rendering.
+ * Returns the most recent `limit` snapshots, ordered oldest-first (ascending
+ * capturedAt) for chart rendering. Zero-price fallback snapshots are excluded.
  *
  * @param slug  - Entity slug
  * @param limit - Maximum rows returned (default 500)
@@ -475,14 +476,19 @@ export async function getBezelPriceHistory(
   });
   if (!entity) return [];
 
-  return prisma.bezelPriceSnapshot.findMany({
+  // Fetch the most recent `limit` rows (DESC), then reverse for chart order (ASC).
+  // Exclude price=0 fallback rows inserted when a fetch fails.
+  const rows = await prisma.bezelPriceSnapshot.findMany({
     where: {
       entityId: entity.id,
+      price: { gt: 0 },
       ...(since ? { capturedAt: { gte: since } } : {}),
     },
-    orderBy: { capturedAt: 'asc' },
+    orderBy: { capturedAt: 'desc' },
     take: limit,
   });
+
+  return rows.reverse(); // oldest → newest, ready for chart rendering
 }
 
 /**
