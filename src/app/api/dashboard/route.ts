@@ -31,7 +31,7 @@ export async function GET() {
 
         // Fetch Bezel history (sparkline + latest price) and probability run in parallel
         let bezelPriceHistory: number[] = [];
-        let latestBezelSnap: { price: number; dailyChange: number | null; dailyChangePct: number | null; dataSourceQuality: string; capturedAt: Date } | null = null;
+        let latestBezelSnap: { price: number; dailyChange: number | null; dailyChangePct: number | null; dataSourceQuality: string; capturedAt: Date; rawPayload?: unknown } | null = null;
         let latestProbRun = null;
 
         if (bezelEntity) {
@@ -63,6 +63,14 @@ export async function GET() {
 
         const currentBezelPrice = latestBezelSnap?.price ?? null;
 
+        // Extract the Bezel-side data timestamp from rawPayload.timestamp (Unix float seconds)
+        // This is when Bezel computed the price (~8:24 AM ET daily), distinct from our fetch time.
+        const bezelRaw = latestBezelSnap?.rawPayload as Record<string, unknown> | null | undefined;
+        const bezelDataAt =
+          typeof bezelRaw?.timestamp === 'number'
+            ? new Date(bezelRaw.timestamp * 1000).toISOString()
+            : null;
+
         // Distance to strike
         let distanceToStrike: number | null = null;
         let distanceToStrikeSigmas: number | null = null;
@@ -91,6 +99,8 @@ export async function GET() {
           kalshiUrl: market.kalshiUrl,
           expirationDate: market.expirationDate?.toISOString() ?? null,
           // Kalshi prices stored in cents [0-100], implied prob stored [0-1]
+          yesBid: latestSnap?.yesBid ?? null,
+          yesAsk: latestSnap?.yesAsk ?? null,
           yesPrice: latestSnap?.yesPrice ?? null,
           noPrice: latestSnap?.noPrice ?? null,
           volume: latestSnap?.volume ?? null,
@@ -111,6 +121,7 @@ export async function GET() {
             null) as DataSourceQuality | null,
           lastBezelUpdate:
             latestBezelSnap?.capturedAt.toISOString() ?? null,
+          bezelDataAt,
           // Strike
           strikeValue,
           strikeDirection,

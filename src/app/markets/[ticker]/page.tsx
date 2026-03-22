@@ -344,14 +344,26 @@ export default function MarketDetailPage({
         {/* Stats row */}
         <div className="mt-4 grid grid-cols-2 gap-3 border-t border-slate-700 pt-4 sm:grid-cols-4 lg:grid-cols-6">
           <Stat
-            label="YES Price"
-            value={snapshot ? `${Math.round(snapshot.yesPrice)}¢` : '—'}
+            label="YES BID"
+            value={
+              snapshot?.yesBid != null
+                ? `${Math.round(snapshot.yesBid)}¢`
+                : snapshot
+                ? `${Math.round(snapshot.yesPrice)}¢`
+                : '—'
+            }
             className="text-green-400"
           />
           <Stat
-            label="NO Price"
-            value={snapshot ? `${Math.round(snapshot.noPrice)}¢` : '—'}
-            className="text-red-400"
+            label="YES ASK"
+            value={
+              snapshot?.yesAsk != null
+                ? `${Math.round(snapshot.yesAsk)}¢`
+                : snapshot
+                ? `${Math.round(100 - snapshot.noPrice)}¢`
+                : '—'
+            }
+            className="text-amber-400"
           />
           <Stat
             label="Volume"
@@ -380,6 +392,17 @@ export default function MarketDetailPage({
             className="text-amber-400"
           />
         </div>
+        {/* Bezel data timestamp */}
+        {mapping?.bezelDataAt && (
+          <p className="mt-2 text-xs text-slate-500">
+            Bezel data computed at{' '}
+            <span className="font-mono text-slate-400">
+              {new Date(mapping.bezelDataAt).toLocaleString([], {
+                month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZoneName: 'short',
+              })}
+            </span>
+          </p>
+        )}
       </div>
 
       {/* Tab navigation */}
@@ -457,7 +480,7 @@ export default function MarketDetailPage({
         {/* ── Orderbook tab ────────────────────────────────────────── */}
         {tab === 'orderbook' && (
           <div>
-            {orderbook ? (
+            {orderbook && (yesBids.length > 0 || noBids.length > 0) ? (
               <OrderbookLadder
                 yesBids={yesBids}
                 noBids={noBids}
@@ -467,6 +490,48 @@ export default function MarketDetailPage({
                 midpoint={orderbook.midpoint}
                 lastUpdated={orderbook.capturedAt}
               />
+            ) : snapshot?.yesBid != null || snapshot?.yesAsk != null ? (
+              /* AMM market — no limit order book; show market quote from latest snapshot */
+              <div className="rounded-lg border border-slate-700 bg-slate-800 p-6 space-y-4">
+                <div className="flex items-center gap-2">
+                  <span className="rounded-full bg-blue-900/40 px-2.5 py-0.5 text-xs font-medium text-blue-300 border border-blue-700/40">
+                    AMM Market
+                  </span>
+                  <p className="text-xs text-slate-500">
+                    Automated market maker — no limit order book. Showing market quote from latest snapshot.
+                  </p>
+                </div>
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="rounded-md bg-slate-700/50 p-4 text-center">
+                    <p className="text-xs font-medium text-slate-400 mb-1">YES BID</p>
+                    <p className="font-mono text-xl font-bold text-green-400">
+                      {snapshot.yesBid != null ? `${Math.round(snapshot.yesBid)}¢` : '—'}
+                    </p>
+                  </div>
+                  <div className="rounded-md bg-slate-700/50 p-4 text-center">
+                    <p className="text-xs font-medium text-slate-400 mb-1">MIDPOINT</p>
+                    <p className="font-mono text-xl font-bold text-slate-200">
+                      {`${Math.round(snapshot.yesPrice)}¢`}
+                    </p>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      {(snapshot.impliedProb * 100).toFixed(1)}% implied
+                    </p>
+                  </div>
+                  <div className="rounded-md bg-slate-700/50 p-4 text-center">
+                    <p className="text-xs font-medium text-slate-400 mb-1">YES ASK</p>
+                    <p className="font-mono text-xl font-bold text-amber-400">
+                      {snapshot.yesAsk != null ? `${Math.round(snapshot.yesAsk)}¢` : '—'}
+                    </p>
+                  </div>
+                </div>
+                {snapshot.yesBid != null && snapshot.yesAsk != null && (
+                  <p className="text-xs text-slate-500 text-center">
+                    Spread: {Math.round(snapshot.yesAsk - snapshot.yesBid)}¢
+                    &nbsp;·&nbsp;
+                    As of {new Date(snapshot.capturedAt).toLocaleString()}
+                  </p>
+                )}
+              </div>
             ) : (
               <div className="flex items-center justify-center rounded-lg border border-slate-700 bg-slate-800 py-12 text-sm text-slate-500">
                 No orderbook data available yet.

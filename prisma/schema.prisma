@@ -49,6 +49,8 @@ model KalshiMarketSnapshot {
   marketId     String
   market       KalshiMarket @relation(fields: [marketId], references: [id])
   capturedAt   DateTime     @default(now())
+  yesBid       Float?
+  yesAsk       Float?
   yesPrice     Float
   noPrice      Float
   volume       Float

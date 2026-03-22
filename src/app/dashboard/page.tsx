@@ -17,6 +17,8 @@ function toCardProps(card: DashboardMarketCard): MarketCardProps {
     brand: card.brand,
     status: card.status,
     expirationDate: card.expirationDate,
+    yesBid: card.yesBid,
+    yesAsk: card.yesAsk,
     yesPrice: card.yesPrice,
     noPrice: card.noPrice,
     volume: card.volume,
@@ -33,6 +35,7 @@ function toCardProps(card: DashboardMarketCard): MarketCardProps {
     bezelPriceHistory: card.bezelPriceHistory,
     dataSourceQuality: card.dataSourceQuality,
     lastBezelUpdate: card.lastBezelUpdate,
+    bezelDataAt: card.bezelDataAt,
   };
 }
 

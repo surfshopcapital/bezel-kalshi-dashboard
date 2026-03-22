@@ -53,6 +53,8 @@ export interface KalshiNormalizedMarket {
   expirationDate: Date | null;
   closeDate: Date | null;
   rulesText: string | null;
+  yesBid: number;        // raw yes bid, in cents (0–100)
+  yesAsk: number;        // raw yes ask, in cents (0–100)
   yesPrice: number;      // mid of yes_bid/yes_ask, in cents
   noPrice: number;       // mid of no_bid/no_ask, in cents
   volume: number;
@@ -194,7 +196,9 @@ export interface DashboardMarketCard {
   status: string;
   kalshiUrl: string;
   expirationDate: string | null;
-  yesPrice: number | null;
+  yesBid: number | null;         // raw yes bid in cents
+  yesAsk: number | null;         // raw yes ask in cents
+  yesPrice: number | null;       // midpoint in cents (= Kalshi implied * 100)
   noPrice: number | null;
   volume: number | null;
   impliedProb: number | null;
@@ -209,6 +213,8 @@ export interface DashboardMarketCard {
   bezelPriceHistory: number[];
   dataSourceQuality: DataSourceQuality | null;
   lastBezelUpdate: string | null;
+  /** Timestamp from the Bezel API payload — when Bezel computed the price (~8:24 AM ET daily) */
+  bezelDataAt: string | null;
   // Strike
   strikeValue: number | null;
   strikeDirection: StrikeDirection | null;

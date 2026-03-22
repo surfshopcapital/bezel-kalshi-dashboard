@@ -18,6 +18,8 @@ export interface MarketCardProps {
   brand: string | null;
   status: string;
   expirationDate: string | null;
+  yesBid: number | null;
+  yesAsk: number | null;
   yesPrice: number | null;
   noPrice: number | null;
   volume: number | null;
@@ -34,6 +36,7 @@ export interface MarketCardProps {
   bezelPriceHistory: number[];
   dataSourceQuality: string | null;
   lastBezelUpdate: string | null;
+  bezelDataAt: string | null;
   isLoading?: boolean;
 }
 
@@ -108,6 +111,8 @@ export function MarketCard(props: MarketCardProps) {
     bezelUrl,
     brand,
     expirationDate,
+    yesBid,
+    yesAsk,
     yesPrice,
     noPrice,
     volume,
@@ -124,6 +129,7 @@ export function MarketCard(props: MarketCardProps) {
     bezelPriceHistory,
     dataSourceQuality,
     lastBezelUpdate,
+    bezelDataAt,
   } = props;
 
   const daysRemaining = formatDaysRemaining(expirationDate);
@@ -170,13 +176,16 @@ export function MarketCard(props: MarketCardProps) {
         </span>
       </div>
 
-      {/* ── Row 1: Kalshi prices + volume ───────────────────────── */}
+      {/* ── Row 1: Kalshi bid/ask + volume ──────────────────────── */}
       <div className="flex items-center gap-3 mb-2.5">
         <span className="font-mono text-sm font-semibold text-green-400">
-          YES {formatCents(yesPrice)}
+          BID {formatCents(yesBid ?? yesPrice)}
         </span>
-        <span className="font-mono text-sm font-semibold text-red-400">
-          NO {formatCents(noPrice)}
+        <span className="font-mono text-sm font-semibold text-amber-400">
+          ASK {formatCents(yesAsk ?? (noPrice != null ? 100 - noPrice : null))}
+        </span>
+        <span className="font-mono text-xs text-slate-500">
+          MID {formatCents(yesPrice)}
         </span>
         <span className="font-mono text-xs text-slate-400 ml-auto">
           Vol: {formatVolume(volume)}
@@ -306,6 +315,14 @@ export function MarketCard(props: MarketCardProps) {
             </a>
           )}
           <SourceBadge quality={dataSourceQuality} />
+          {bezelDataAt && (
+            <span
+              className="text-xs text-slate-500"
+              title={`Bezel data computed at ${new Date(bezelDataAt).toLocaleString()}`}
+            >
+              Bezel {new Date(bezelDataAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            </span>
+          )}
         </div>
         <StaleDataWarning lastUpdated={lastBezelUpdate} maxAgeMinutes={60} />
       </div>

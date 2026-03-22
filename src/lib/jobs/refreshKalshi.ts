@@ -45,6 +45,8 @@ export async function refreshKalshiJob(): Promise<RefreshResult> {
       const market = await upsertKalshiMarket(normalized);
 
       await appendKalshiSnapshot(market.id, {
+        yesBid: normalized.yesBid,
+        yesAsk: normalized.yesAsk,
         yesPrice: normalized.yesPrice,
         noPrice: normalized.noPrice,
         volume: normalized.volume,

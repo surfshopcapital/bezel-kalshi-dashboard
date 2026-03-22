@@ -139,6 +139,8 @@ export function normalizeKalshiMarket(raw: KalshiApiMarket): KalshiNormalizedMar
     expirationDate,
     closeDate,
     rulesText: rulesText ?? null,
+    yesBid,
+    yesAsk,
     yesPrice,
     noPrice,
     volume,

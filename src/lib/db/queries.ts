@@ -68,6 +68,8 @@ export interface KalshiNormalizedMarket {
 
 /** Input for appending a KalshiMarketSnapshot row. */
 export interface KalshiSnapshotData {
+  yesBid?: number | null;
+  yesAsk?: number | null;
   yesPrice: number;
   noPrice: number;
   volume: number;
@@ -136,6 +138,8 @@ export async function appendKalshiSnapshot(
   return prisma.kalshiMarketSnapshot.create({
     data: {
       marketId,
+      yesBid: data.yesBid ?? null,
+      yesAsk: data.yesAsk ?? null,
       yesPrice: data.yesPrice,
       noPrice: data.noPrice,
       volume: data.volume,

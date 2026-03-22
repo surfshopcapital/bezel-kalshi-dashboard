@@ -3,6 +3,7 @@ import {
   getKalshiMarketByTicker,
   getLatestProbabilityRun,
   getRecentIngestionLogs,
+  getLatestBezelPrice,
 } from '@/lib/db/queries';
 import { getMappingByKalshiTicker } from '@/lib/mappings';
 import { logger } from '@/lib/utils/logger';
@@ -29,14 +30,22 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const latestSnapshot = market.snapshots[0] ?? null;
     const latestOrderbook = market.orderbookSnaps[0] ?? null;
 
-    // Fetch prob run and recent logs in parallel
-    const [latestProbRun, allRecentLogs] = await Promise.all([
-      getLatestProbabilityRun(market.id),
-      getRecentIngestionLogs(50),
-    ]);
-
     // Filter logs relevant to this market or its Bezel entity
     const bezelSlug = market.mapping?.bezelEntity?.slug ?? null;
+
+    // Fetch prob run, recent logs, and latest Bezel snapshot in parallel
+    const [latestProbRun, allRecentLogs, latestBezelSnap] = await Promise.all([
+      getLatestProbabilityRun(market.id),
+      getRecentIngestionLogs(50),
+      bezelSlug ? getLatestBezelPrice(bezelSlug) : Promise.resolve(null),
+    ]);
+
+    // Extract Bezel-side data timestamp from rawPayload.timestamp (Unix float seconds)
+    const bezelRaw = latestBezelSnap?.rawPayload as Record<string, unknown> | null | undefined;
+    const bezelDataAt =
+      typeof bezelRaw?.timestamp === 'number'
+        ? new Date(bezelRaw.timestamp * 1000).toISOString()
+        : null;
     const marketLogs = allRecentLogs.filter(
       (l) =>
         l.entityTicker === ticker.toUpperCase() ||
@@ -69,6 +78,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       },
       snapshot: latestSnapshot
         ? {
+            yesBid: latestSnapshot.yesBid,
+            yesAsk: latestSnapshot.yesAsk,
             yesPrice: latestSnapshot.yesPrice,
             noPrice: latestSnapshot.noPrice,
             volume: latestSnapshot.volume,
@@ -119,6 +130,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
             strikeValue: market.mapping.strikeValue ?? mappingConfig?.strikeValue ?? null,
             strikeDirection: market.mapping.strikeDirection ?? mappingConfig?.strikeDirection ?? null,
             notes: market.mapping.notes,
+            bezelDataAt,
           }
         : null,
       logs: marketLogs.map((log) => ({
