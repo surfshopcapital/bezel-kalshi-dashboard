@@ -31,7 +31,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       );
     }
 
-    const latest = await getLatestBezelPriceSnapshot(slug);
+    const latest = await getLatestBezelPriceSnapshot(entity.id);
 
     // priceSnapshots from getBezelEntityBySlug is most recent 7 (desc order)
     // Reverse to chronological order for sparkline

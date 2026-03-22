@@ -46,6 +46,36 @@ export class BezelProvider {
   }
 
   // -------------------------------------------------------------------------
+  // Public: endpoint pre-seeding
+  // -------------------------------------------------------------------------
+
+  /**
+   * Pre-seed the in-memory endpoint cache for a slug with a known-good API URL.
+   * This allows Tier 1 (direct HTTP fetch) to succeed immediately on the first
+   * run, skipping Playwright entirely for known endpoints.
+   *
+   * Safe to call multiple times — duplicate URLs are deduplicated.
+   *
+   * @param slug - Entity slug, e.g. "cartier-index"
+   * @param url  - Direct API URL, e.g. "https://api.bezel.cloud/beztimate/indexes/4/value"
+   */
+  public preloadEndpoint(slug: string, url: string): void {
+    const existing = this.endpointCache.get(slug) ?? [];
+    if (existing.some((e) => e.url === url)) return; // already present
+    this.endpointCache.set(slug, [
+      {
+        url,
+        method: 'GET',
+        responseFormat: 'json',
+        discoveredAt: new Date().toISOString(),
+        entitySlug: slug,
+        score: 100, // highest possible — we know this URL is correct
+      },
+      ...existing,
+    ]);
+  }
+
+  // -------------------------------------------------------------------------
   // Public: main entry point
   // -------------------------------------------------------------------------
 

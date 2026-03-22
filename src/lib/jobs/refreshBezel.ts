@@ -28,6 +28,15 @@ export async function bezelIngestionJob(): Promise<BezelRefreshResult> {
   const result: BezelRefreshResult = { success: 0, failed: 0, skipped: 0, errors: [] };
   const uniqueSlugs = getUniqueBezelSlugs();
 
+  // Pre-seed the provider cache with all known API endpoints so Tier 1
+  // (direct HTTP fetch, no Playwright) succeeds immediately on the first run.
+  for (const mapping of MARKET_MAPPINGS) {
+    if (mapping.bezelApiUrl) {
+      bezelProvider.preloadEndpoint(mapping.bezelSlug, mapping.bezelApiUrl);
+      log.info('Pre-seeded Bezel endpoint', { slug: mapping.bezelSlug, url: mapping.bezelApiUrl });
+    }
+  }
+
   log.info('Starting Bezel ingestion', { slugCount: uniqueSlugs.length });
 
   for (const slug of uniqueSlugs) {

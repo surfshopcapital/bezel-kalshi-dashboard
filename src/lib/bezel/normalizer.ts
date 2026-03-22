@@ -113,6 +113,13 @@ export function parseBezelChange(
 
 /** Pluck `value` from various candidate keys in an object. */
 function extractValue(obj: Record<string, unknown>): number | null {
+  // Handle Bezel internal API format: { valueCents: integer } — divide by 100 for dollars.
+  // Checked first because the Bezel API uses this exclusively (e.g. /beztimate/indexes/{id}/value).
+  if (obj['valueCents'] !== undefined && obj['valueCents'] !== null) {
+    const cents = Number(obj['valueCents']);
+    if (Number.isFinite(cents) && cents > 0) return cents / 100;
+  }
+
   for (const key of ['value', 'price', 'currentPrice', 'current_price', 'marketPrice', 'market_price']) {
     const v = obj[key];
     if (v !== undefined && v !== null) {
