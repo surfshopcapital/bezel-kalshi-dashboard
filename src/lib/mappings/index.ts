@@ -176,13 +176,13 @@ export const MARKET_MAPPINGS: MarketMappingConfig[] = [
     bezelSlug: 'omega-speedmaster-moonwatch',
     bezelEntityType: 'model',
     bezelUrl: 'https://markets.getbezel.com/models/omega-speedmaster-moonwatch',
-    // Bezel internal API — composite modelId 1001 = Speedmaster Professional Moonwatch 3861
-    // Note: Kalshi references ref 310.30.42.50.01.002 (sapphire/bracelet); Bezel catalog
-    // has modelId 1001 as the closest Speedmaster 3861 match.
+    // Bezel internal API — composite modelId 11695 = Speedmaster Professional Moonwatch 3861
+    // Steel / Black / Sapphire / Bracelet 310.30.42.50.01.002 (confirmed via live API, March 2026).
+    // modelId 1001 was wrong (~$5,852); 11695 matches Bezel site price of ~$6,575.
     bezelApiUrl:
-      'https://api.bezel.cloud/beztimate/composites/1/value?modelId=1001&condition=PREOWNED&withBox=true&withPapers=true',
+      'https://api.bezel.cloud/beztimate/composites/1/value?modelId=11695&condition=PREOWNED&withBox=true&withPapers=true',
     bezelHistoryApiUrl:
-      'https://api.bezel.cloud/beztimate/composites/1/data?modelId=1001&condition=PREOWNED&withBox=true&withPapers=true',
+      'https://api.bezel.cloud/beztimate/composites/1/data?modelId=11695&condition=PREOWNED&withBox=true&withPapers=true',
     brand: 'Omega',
     strikeValue: 6831,
     strikeDirection: 'above',
