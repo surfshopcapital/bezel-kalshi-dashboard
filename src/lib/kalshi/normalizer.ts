@@ -88,15 +88,32 @@ const KALSHI_BASE_URL = 'https://kalshi.com/markets';
 /**
  * Normalize a raw KalshiApiMarket into the internal KalshiNormalizedMarket type.
  *
- * - yesPrice  = midpoint of yes_bid and yes_ask (in cents, 0–100)
- * - noPrice   = midpoint of no_bid and no_ask
+ * The Kalshi v2 API now returns prices as string dollar amounts (_dollars suffix,
+ * e.g. yes_bid_dollars="0.5300" = 53¢) and volumes as string floats (_fp suffix).
+ * We convert those to integer cents (0–100) for internal use, falling back to
+ * the legacy integer-cent fields when the new fields are absent.
+ *
+ * - yesPrice  = midpoint of yes_bid and yes_ask in cents (0–100)
+ * - noPrice   = midpoint of no_bid and no_ask in cents
  * - impliedProb = yesPrice / 100  → [0, 1]
  * - Strike fields are parsed from title + rules_primary
  */
 export function normalizeKalshiMarket(raw: KalshiApiMarket): KalshiNormalizedMarket {
+  // Extract prices — prefer new _dollars string fields (multiply by 100 for cents),
+  // fall back to legacy integer-cent fields.
+  const yesBid = parseDollarsField(raw.yes_bid_dollars) ?? raw.yes_bid ?? 0;
+  const yesAsk = parseDollarsField(raw.yes_ask_dollars) ?? raw.yes_ask ?? 0;
+  const noBid  = parseDollarsField(raw.no_bid_dollars)  ?? raw.no_bid  ?? 0;
+  const noAsk  = parseDollarsField(raw.no_ask_dollars)  ?? raw.no_ask  ?? 0;
+  const lastPriceRaw = parseDollarsField(raw.last_price_dollars) ?? raw.last_price ?? null;
+
   // Midpoint prices — clamp to [0, 100]
-  const yesPrice = clampPrice(midpoint(raw.yes_bid, raw.yes_ask));
-  const noPrice = clampPrice(midpoint(raw.no_bid, raw.no_ask));
+  const yesPrice = clampPrice(midpoint(yesBid, yesAsk));
+  const noPrice  = clampPrice(midpoint(noBid,  noAsk));
+
+  // Volume / open interest — prefer _fp string fields
+  const volume       = parseFpField(raw.volume_fp)       ?? raw.volume       ?? 0;
+  const openInterest = parseFpField(raw.open_interest_fp) ?? raw.open_interest ?? null;
 
   // Parse strike
   const rulesText = raw.rules_primary ?? raw.rules_secondary ?? undefined;
@@ -124,9 +141,9 @@ export function normalizeKalshiMarket(raw: KalshiApiMarket): KalshiNormalizedMar
     rulesText: rulesText ?? null,
     yesPrice,
     noPrice,
-    volume: raw.volume ?? 0,
-    openInterest: raw.open_interest ?? null,
-    lastPrice: raw.last_price ?? null,
+    volume,
+    openInterest,
+    lastPrice: lastPriceRaw,
     impliedProb: yesPrice / 100,
     resolvedStrike: strikeValue,
     strikeDirection,
@@ -213,6 +230,27 @@ function parseIsoDate(iso?: string): Date | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * Parse a Kalshi `_dollars` string field into integer cents.
+ * E.g. "0.5300" → 53  |  "1.0000" → 100  |  undefined → null
+ */
+function parseDollarsField(val: string | undefined): number | null {
+  if (val === undefined || val === null) return null;
+  const f = parseFloat(val);
+  if (!Number.isFinite(f)) return null;
+  return Math.round(f * 100); // dollars → cents
+}
+
+/**
+ * Parse a Kalshi `_fp` string field into a number.
+ * E.g. "19938.00" → 19938  |  undefined → null
+ */
+function parseFpField(val: string | undefined): number | null {
+  if (val === undefined || val === null) return null;
+  const f = parseFloat(val);
+  return Number.isFinite(f) ? f : null;
 }
 
 function buildKalshiUrl(eventTicker: string, ticker: string): string {

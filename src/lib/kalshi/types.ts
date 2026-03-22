@@ -19,21 +19,38 @@ export interface KalshiApiMarket {
   series_ticker?: string;
   title: string;
   subtitle?: string;
-  status: string; // "open" | "closed" | "settled"
-  yes_bid: number;
-  yes_ask: number;
-  no_bid: number;
-  no_ask: number;
-  last_price: number;
-  volume: number;
+  status: string; // "active" | "closed" | "settled"
+
+  // ----- New API format (v2 with response_price_units=usd_cent) -----
+  // Prices are string-formatted dollar amounts, e.g. "0.5300" = 53¢
+  yes_bid_dollars?: string;
+  yes_ask_dollars?: string;
+  no_bid_dollars?: string;
+  no_ask_dollars?: string;
+  last_price_dollars?: string;
+  previous_price_dollars?: string;
+  // Volume/OI are string-formatted floats with _fp suffix
+  volume_fp?: string;
+  volume_24h_fp?: string;
+  open_interest_fp?: string;
+
+  // ----- Legacy API format (integer cents) -----
+  yes_bid?: number;
+  yes_ask?: number;
+  no_bid?: number;
+  no_ask?: number;
+  last_price?: number;
+  volume?: number;
   volume_24h?: number;
   open_interest?: number;
+
   close_time?: string; // ISO timestamp
   expiration_time?: string; // ISO timestamp
   rules_primary?: string;
   rules_secondary?: string;
   result?: string;
   can_close_early?: boolean;
+  floor_strike?: number;
   // Internal: set by client after fetch
   _fetchedAt?: number;
 }
