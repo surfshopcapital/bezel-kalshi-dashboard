@@ -972,6 +972,49 @@ export async function getRecentIngestionLogs(
 }
 
 /**
+ * Return the most recent "new daily price" snapshot for every BezelEntity.
+ * Used to power the Bezel Update Log table on the dashboard — showing exactly
+ * when Bezel last published a fresh daily value for each tracked market.
+ *
+ * Returns one row per entity. If an entity has never had isNewDailyPrice=true
+ * (e.g. the columns were just migrated) the snapshot fields are null.
+ */
+export async function getBezelUpdateLog(): Promise<
+  Array<{
+    slug: string;
+    name: string;
+    price: number;
+    dailyChange: number | null;
+    dailyChangePct: number | null;
+    bezelComputedAt: Date | null;
+    capturedAt: Date | null;
+  }>
+> {
+  const entities = await prisma.bezelEntity.findMany({
+    select: { id: true, slug: true, name: true },
+    orderBy: { name: 'asc' },
+  });
+
+  return Promise.all(
+    entities.map(async (entity) => {
+      const snap = await prisma.bezelPriceSnapshot.findFirst({
+        where: { entityId: entity.id, isNewDailyPrice: true },
+        orderBy: { capturedAt: 'desc' },
+      });
+      return {
+        slug: entity.slug,
+        name: entity.name,
+        price: snap?.price ?? 0,
+        dailyChange: snap?.dailyChange ?? null,
+        dailyChangePct: snap?.dailyChangePct ?? null,
+        bezelComputedAt: snap?.bezelComputedAt ?? null,
+        capturedAt: snap?.capturedAt ?? null,
+      };
+    }),
+  );
+}
+
+/**
  * Legacy alias for getRecentIngestionLogs with an options-object signature.
  * Retained so existing callers do not need immediate updates.
  *

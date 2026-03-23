@@ -1,8 +1,10 @@
 'use client';
 
 import { useMarkets } from '@/hooks/useMarkets';
+import { useBezelUpdates } from '@/hooks/useBezelUpdates';
 import { MarketGrid } from '@/components/dashboard/MarketGrid';
 import { StatsBar } from '@/components/dashboard/StatsBar';
+import { BezelUpdateTable } from '@/components/dashboard/BezelUpdateTable';
 import { ErrorDisplay } from '@/components/shared/ErrorDisplay';
 import type { DashboardMarketCard } from '@/types';
 import type { MarketCardProps } from '@/components/dashboard/MarketCard';
@@ -32,6 +34,7 @@ function toCardProps(card: DashboardMarketCard): MarketCardProps {
     distanceToStrikeSigmas: card.distanceToStrikeSigmas,
     modeledProbability: card.modeledProbability,
     modelEdge: card.modelEdge,
+    confidenceScore: card.confidenceScore,
     bezelPriceHistory: card.bezelPriceHistory,
     dataSourceQuality: card.dataSourceQuality,
     lastBezelUpdate: card.lastBezelUpdate,
@@ -41,6 +44,7 @@ function toCardProps(card: DashboardMarketCard): MarketCardProps {
 
 export default function DashboardPage() {
   const { data, isLoading, error } = useMarkets();
+  const { data: bezelUpdates, isLoading: updatesLoading } = useBezelUpdates();
 
   const cards: DashboardMarketCard[] = data?.data ?? [];
   const cardProps: MarketCardProps[] = cards.map(toCardProps);
@@ -107,6 +111,12 @@ export default function DashboardPage() {
 
       {/* Market cards grid */}
       <MarketGrid markets={cardProps} isLoading={isLoading} />
+
+      {/* Bezel daily update log table */}
+      <BezelUpdateTable
+        rows={bezelUpdates?.data ?? []}
+        isLoading={updatesLoading}
+      />
     </div>
   );
 }

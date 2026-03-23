@@ -9,6 +9,7 @@ import { useCorrelations } from '@/hooks/useCorrelations';
 import { BezelHistoryChart } from '@/components/market/BezelHistoryChart';
 import { OrderbookLadder } from '@/components/market/OrderbookLadder';
 import { ProbabilityPanel } from '@/components/market/ProbabilityPanel';
+import { MarketMakingPanel } from '@/components/market/MarketMakingPanel';
 import { IngestionLogs } from '@/components/market/IngestionLogs';
 import { CorrelationHeatmap } from '@/components/research/CorrelationHeatmap';
 import { SourceBadge } from '@/components/shared/SourceBadge';
@@ -21,12 +22,13 @@ import { formatCurrency, formatDate, formatDaysRemaining } from '@/lib/utils/for
 // Types
 // ---------------------------------------------------------------------------
 
-type Tab = 'overview' | 'history' | 'orderbook' | 'probability' | 'correlations' | 'logs';
+type Tab = 'overview' | 'history' | 'orderbook' | 'trading' | 'probability' | 'correlations' | 'logs';
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'overview', label: 'Overview' },
   { id: 'history', label: 'Bezel History' },
   { id: 'orderbook', label: 'Orderbook' },
+  { id: 'trading', label: '📈 Trading' },
   { id: 'probability', label: 'Probability' },
   { id: 'correlations', label: 'Correlations' },
   { id: 'logs', label: 'Data Logs' },
@@ -154,6 +156,8 @@ export default function MarketDetailPage({
   }
 
   const { market, snapshot, orderbook, probability, mapping, logs } = detail;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const probHistory: any[] = (detail as any).probHistory ?? [];
 
   // ── Bezel history data ─────────────────────────────────────────────────────
 
@@ -538,6 +542,26 @@ export default function MarketDetailPage({
               </div>
             )}
           </div>
+        )}
+
+        {/* ── Trading tab ──────────────────────────────────────────── */}
+        {tab === 'trading' && (
+          <MarketMakingPanel
+            ticker={upperTicker}
+            strikeDirection={strikeDirection}
+            latestProb={probability ?? null}
+            probHistory={probHistory}
+            snapshot={
+              snapshot
+                ? {
+                    yesBid: snapshot.yesBid ?? null,
+                    yesAsk: snapshot.yesAsk ?? null,
+                    yesPrice: snapshot.yesPrice,
+                    impliedProb: snapshot.impliedProb,
+                  }
+                : null
+            }
+          />
         )}
 
         {/* ── Probability tab ─────────────────────────────────────── */}

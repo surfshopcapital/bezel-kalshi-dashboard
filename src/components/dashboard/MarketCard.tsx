@@ -33,11 +33,36 @@ export interface MarketCardProps {
   distanceToStrikeSigmas: number | null;
   modeledProbability: number | null;
   modelEdge: number | null;
+  confidenceScore: number | null;
   bezelPriceHistory: number[];
   dataSourceQuality: string | null;
   lastBezelUpdate: string | null;
   bezelDataAt: string | null;
   isLoading?: boolean;
+}
+
+/**
+ * Returns a Tailwind ring + glow class based on model edge magnitude and
+ * confidence. Used to visually flag high-opportunity cards at a glance.
+ *
+ * Strong (|edge| > 15%, conf > 0.5)  → amber ring + subtle amber glow
+ * Moderate (|edge| > 8%)             → blue ring
+ * Weak / no edge                     → no ring (default border only)
+ */
+function opportunityRingClass(
+  modelEdge: number | null,
+  confidence: number | null,
+): string {
+  if (modelEdge == null) return '';
+  const absEdge = Math.abs(modelEdge);
+  const conf = confidence ?? 0.5;
+  if (absEdge > 15 && conf > 0.5) {
+    return 'ring-2 ring-amber-400/70 shadow-lg shadow-amber-900/25 border-amber-700/50';
+  }
+  if (absEdge > 8) {
+    return 'ring-1 ring-blue-500/60 border-blue-700/40';
+  }
+  return '';
 }
 
 // Brand colors for visual differentiation
@@ -126,11 +151,14 @@ export function MarketCard(props: MarketCardProps) {
     distanceToStrikeSigmas,
     modeledProbability,
     modelEdge,
+    confidenceScore,
     bezelPriceHistory,
     dataSourceQuality,
     lastBezelUpdate,
     bezelDataAt,
   } = props;
+
+  const ringClass = opportunityRingClass(modelEdge, confidenceScore);
 
   const daysRemaining = formatDaysRemaining(expirationDate);
   const hasEdge = modelEdge != null && Math.abs(modelEdge) > 5;
@@ -151,7 +179,7 @@ export function MarketCard(props: MarketCardProps) {
   return (
     <Link
       href={`/markets/${encodeURIComponent(ticker)}`}
-      className="block rounded-lg border border-slate-700 bg-slate-800 p-4 hover:border-slate-500 hover:bg-slate-750 transition-all duration-150 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500"
+      className={`block rounded-lg border border-slate-700 bg-slate-800 p-4 hover:border-slate-500 transition-all duration-150 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500 ${ringClass}`}
     >
       {/* ── Header ──────────────────────────────────────────────── */}
       <div className="flex items-start justify-between gap-2 mb-2.5">

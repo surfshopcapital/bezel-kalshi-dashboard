@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import {
   getKalshiMarketByTicker,
   getLatestProbabilityRun,
+  getProbabilityHistory,
   getRecentIngestionLogs,
   getLatestBezelPrice,
 } from '@/lib/db/queries';
@@ -33,9 +34,10 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     // Filter logs relevant to this market or its Bezel entity
     const bezelSlug = market.mapping?.bezelEntity?.slug ?? null;
 
-    // Fetch prob run, recent logs, and latest Bezel snapshot in parallel
-    const [latestProbRun, allRecentLogs, latestBezelSnap] = await Promise.all([
+    // Fetch prob run, prob history, recent logs, and latest Bezel snapshot in parallel
+    const [latestProbRun, probHistory, allRecentLogs, latestBezelSnap] = await Promise.all([
       getLatestProbabilityRun(market.id),
+      getProbabilityHistory(market.id, 60),
       getRecentIngestionLogs(50),
       bezelSlug ? getLatestBezelPrice(bezelSlug) : Promise.resolve(null),
     ]);
@@ -121,6 +123,22 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
             runAt: latestProbRun.runAt.toISOString(),
           }
         : null,
+      // Last 60 probability model runs — used for the backtest chart in the Trading tab
+      probHistory: probHistory.map((r) => ({
+        runAt: r.runAt.toISOString(),
+        modelType: r.modelType,
+        currentLevel: r.currentLevel,
+        strike: r.strike,
+        strikeDirection: r.strikeDirection,
+        probabilityAbove: r.probabilityAbove,
+        probabilityBelow: r.probabilityBelow,
+        kalshiImpliedProb: r.kalshiImpliedProb,
+        modelEdge: r.modelEdge,
+        confidenceScore: r.confidenceScore,
+        annualizedVol: r.annualizedVol,
+        oneSigmaMove: r.oneSigmaMove,
+        daysToExpiry: r.daysToExpiry,
+      })),
       mapping: market.mapping
         ? {
             bezelSlug: mappingConfig?.bezelSlug ?? bezelSlug ?? market.mapping.kalshiTicker,
