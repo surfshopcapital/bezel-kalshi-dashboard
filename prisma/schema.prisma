@@ -112,9 +112,14 @@ model BezelPriceSnapshot {
   /// "official_api" | "frontend_network_capture" | "html_scrape" | "manual_mapping_fallback"
   dataSourceQuality String
   rawPayload        Json?
+  /// Timestamp extracted from Bezel's API payload — when Bezel computed the price (~8:24 AM ET daily)
+  bezelComputedAt   DateTime?
+  /// True on the first snapshot that captures a new daily Bezel price (rawPayload.timestamp changed)
+  isNewDailyPrice   Boolean     @default(false)
 
   @@index([entityId, capturedAt])
   @@index([capturedAt])
+  @@index([entityId, isNewDailyPrice])
 }
 
 // ---------------------------------------------------------------------------

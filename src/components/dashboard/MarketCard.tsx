@@ -136,6 +136,11 @@ export function MarketCard(props: MarketCardProps) {
   const hasEdge = modelEdge != null && Math.abs(modelEdge) > 5;
   const edgePositive = (modelEdge ?? 0) >= 0;
 
+  // "Updated Today" badge: true when Bezel's computed-price date matches today
+  const bezelUpdatedToday =
+    bezelDataAt != null &&
+    new Date(bezelDataAt).toDateString() === new Date().toDateString();
+
   // Determine bezel price change color
   const changeIsPositive = (bezelDailyChange ?? 0) > 0;
   const changeIsNegative = (bezelDailyChange ?? 0) < 0;
@@ -195,9 +200,17 @@ export function MarketCard(props: MarketCardProps) {
       {/* ── Row 2: Bezel price + change + sparkline ─────────────── */}
       <div className="flex items-center justify-between mb-2.5">
         <div>
-          <span className="text-lg font-bold text-slate-100">
-            {currentBezelPrice != null ? formatCurrency(currentBezelPrice) : '—'}
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="text-lg font-bold text-slate-100">
+              {currentBezelPrice != null ? formatCurrency(currentBezelPrice) : '—'}
+            </span>
+            {bezelUpdatedToday && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-900/40 border border-emerald-700/50 px-2 py-0.5 text-xs font-medium text-emerald-400">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                Updated Today
+              </span>
+            )}
+          </div>
           {bezelDailyChange != null && (
             <div className="flex items-center gap-1 mt-0.5">
               {changeIsPositive && <TrendingUp className="h-3 w-3 text-green-400" />}

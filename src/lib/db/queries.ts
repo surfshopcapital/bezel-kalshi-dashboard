@@ -298,6 +298,10 @@ export interface BezelPriceSnapshotInput {
   volume?: number | null;
   dataSourceQuality: string;
   rawPayload?: Prisma.InputJsonValue | null;
+  /** Timestamp extracted from Bezel's API payload (when Bezel computed the price). */
+  bezelComputedAt?: Date | null;
+  /** True on the first snapshot that captured a new Bezel daily price. */
+  isNewDailyPrice?: boolean;
 }
 
 // ===========================================================================
@@ -410,6 +414,8 @@ export async function insertBezelPriceSnapshotAtTime(
       volume: data.volume ?? null,
       dataSourceQuality: data.dataSourceQuality,
       rawPayload: data.rawPayload ?? Prisma.JsonNull,
+      bezelComputedAt: data.bezelComputedAt ?? null,
+      isNewDailyPrice: data.isNewDailyPrice ?? false,
     },
   });
 }
@@ -433,6 +439,8 @@ export async function appendBezelPriceSnapshot(
       volume: data.volume ?? null,
       dataSourceQuality: data.dataSourceQuality,
       rawPayload: data.rawPayload ?? Prisma.JsonNull,
+      bezelComputedAt: data.bezelComputedAt ?? null,
+      isNewDailyPrice: data.isNewDailyPrice ?? false,
     },
   });
 }

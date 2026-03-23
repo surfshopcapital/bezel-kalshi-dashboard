@@ -9,6 +9,7 @@ import { bezelProvider } from '@/lib/bezel/provider';
 import {
   upsertBezelEntity,
   appendBezelPriceSnapshot,
+  getLatestBezelPriceSnapshot,
   startIngestionLog,
   finishIngestionLog,
 } from '@/lib/db/queries';
@@ -96,6 +97,30 @@ export async function bezelIngestionJob(): Promise<BezelRefreshResult> {
 
       const normalized = ingestionResult.price;
 
+      // ── Daily-update detection ────────────────────────────────────────────
+      // Compare the Bezel-side timestamp in the new payload against the most
+      // recently stored snapshot. If it differs, Bezel pushed a new daily price.
+      const latestStored = await getLatestBezelPriceSnapshot(entity.id);
+      const prevRaw = latestStored?.rawPayload as Record<string, unknown> | null | undefined;
+      const newRaw  = normalized.rawPayload as Record<string, unknown> | null | undefined;
+      const prevBezelTs = typeof prevRaw?.timestamp === 'number' ? prevRaw.timestamp : null;
+      const newBezelTs  = typeof newRaw?.timestamp  === 'number' ? newRaw.timestamp  : null;
+
+      // bezelComputedAt: when Bezel actually computed this price
+      const bezelComputedAt = newBezelTs != null ? new Date(newBezelTs * 1000) : null;
+
+      // Flag as new daily price if Bezel's timestamp advanced (or this is the first snapshot)
+      const isNewDailyPrice = newBezelTs != null && newBezelTs !== prevBezelTs;
+
+      if (isNewDailyPrice) {
+        log.info('New Bezel daily price detected', {
+          slug,
+          bezelComputedAt: bezelComputedAt?.toISOString(),
+          prevTs: prevBezelTs,
+          newTs: newBezelTs,
+        });
+      }
+
       // Append the price snapshot
       await appendBezelPriceSnapshot(entity.id, {
         price: normalized.price,
@@ -104,6 +129,8 @@ export async function bezelIngestionJob(): Promise<BezelRefreshResult> {
         volume: normalized.volume,
         dataSourceQuality: normalized.dataSourceQuality,
         rawPayload: normalized.rawPayload as object,
+        bezelComputedAt,
+        isNewDailyPrice,
       });
 
       await finishIngestionLog(ingestionLog.id, 'success', 1);
