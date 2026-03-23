@@ -32,6 +32,10 @@ const log = createChildLogger({ job: 'computeProbabilities' });
 const MIN_DATA_POINTS = 5;
 const DEFAULT_VOL_WINDOW: VolatilityWindow = 20;
 const DEFAULT_LOOKBACK_DAYS = 90;
+// How many raw DB rows to fetch. Must be large enough to cover the full
+// lookback window even at max polling frequency (15-min = 96 rows/day).
+// 90 days × 100 rows/day-buffer = 9,000 — well above the 96/day worst case.
+const HISTORY_FETCH_LIMIT = DEFAULT_LOOKBACK_DAYS * 100;
 
 export interface ProbabilitiesResult {
   computed: number;
@@ -75,19 +79,43 @@ export async function computeProbabilitiesJob(): Promise<ProbabilitiesResult> {
         continue;
       }
 
-      // Load price history
+      // Load price history — use a generous row limit so we capture all daily
+      // prices in the lookback window regardless of polling frequency.
       const since = new Date(Date.now() - DEFAULT_LOOKBACK_DAYS * 24 * 60 * 60 * 1000);
-      const history = await getBezelPriceHistory(bezelEntity.slug, DEFAULT_LOOKBACK_DAYS, since);
+      const history = await getBezelPriceHistory(bezelEntity.slug, HISTORY_FETCH_LIMIT, since);
 
-      if (history.length < MIN_DATA_POINTS) {
-        const msg = `Insufficient data (${history.length} points, need ${MIN_DATA_POINTS}) for ${mapping.bezelSlug}`;
+      // ── Daily deduplication ───────────────────────────────────────────────
+      // Bezel publishes one new price per day (~8 PM ET for indexes, ~1 AM ET
+      // for models). Polling every 15 minutes creates many snapshots with
+      // identical prices. Feeding those into the vol calculation produces
+      // log-returns of zero → vol ≈ 0 → probability collapses to 0% or 100%.
+      //
+      // Fix: keep only the FIRST snapshot seen per calendar day (history is
+      // already sorted oldest→newest by getBezelPriceHistory). This gives us
+      // genuine daily price moves for vol estimation.
+      const seenDates = new Set<string>();
+      const dailyHistory = history.filter((snap) => {
+        const dateKey = snap.capturedAt.toISOString().slice(0, 10); // YYYY-MM-DD UTC
+        if (seenDates.has(dateKey)) return false;
+        seenDates.add(dateKey);
+        return true;
+      });
+
+      log.info('Price history loaded', {
+        ticker: mapping.kalshiTicker,
+        rawSnapshots: history.length,
+        dailyPrices: dailyHistory.length,
+      });
+
+      if (dailyHistory.length < MIN_DATA_POINTS) {
+        const msg = `Insufficient data (${dailyHistory.length} daily points, need ${MIN_DATA_POINTS}) for ${mapping.bezelSlug}`;
         log.info(msg);
         await finishIngestionLog(ingestionLog.id, 'partial', 0, msg);
         result.skipped++;
         continue;
       }
 
-      const priceHistory = history.map((h) => h.price);
+      const priceHistory = dailyHistory.map((h) => h.price);
       const currentPrice = priceHistory[priceHistory.length - 1];
 
       // Resolve strike — prefer the mapping config, then fall back to the market's parsed strike
@@ -152,6 +180,7 @@ export async function computeProbabilitiesJob(): Promise<ProbabilitiesResult> {
         scenarioTable: output.scenarioTable as unknown as import('@prisma/client').Prisma.InputJsonValue,
         inputParams: {
           priceHistoryLength: priceHistory.length,
+          rawSnapshotCount: history.length,
           volWindow: inputs.volWindow,
           modelType: inputs.modelType,
         },
