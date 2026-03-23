@@ -1,4 +1,5 @@
-import useSWR from 'swr';
+'use client';
+import { useQuery } from '@tanstack/react-query';
 
 export interface BezelUpdateRow {
   slug: string;
@@ -10,12 +11,17 @@ export interface BezelUpdateRow {
   capturedAt: string | null;      // ISO — when we first detected the new price
 }
 
-const fetcher = (url: string) => fetch(url).then((r) => r.json());
+async function fetchBezelUpdates(): Promise<{ data: BezelUpdateRow[]; meta: { timestamp: string } }> {
+  const res = await fetch('/api/dashboard/bezel-updates');
+  if (!res.ok) throw new Error('Failed to fetch Bezel update log');
+  return res.json();
+}
 
 export function useBezelUpdates() {
-  return useSWR<{ data: BezelUpdateRow[]; meta: { timestamp: string } }>(
-    '/api/dashboard/bezel-updates',
-    fetcher,
-    { refreshInterval: 5 * 60 * 1000 }, // re-fetch every 5 min
-  );
+  return useQuery({
+    queryKey: ['bezel-updates'],
+    queryFn: fetchBezelUpdates,
+    refetchInterval: 5 * 60 * 1000, // re-fetch every 5 min
+    staleTime: 4 * 60 * 1000,
+  });
 }
