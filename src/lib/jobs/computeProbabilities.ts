@@ -90,16 +90,16 @@ export async function computeProbabilitiesJob(): Promise<ProbabilitiesResult> {
       // identical prices. Feeding those into the vol calculation produces
       // log-returns of zero → vol ≈ 0 → probability collapses to 0% or 100%.
       //
-      // Fix: keep only the FIRST snapshot seen per calendar day (history is
-      // already sorted oldest→newest by getBezelPriceHistory). This gives us
-      // genuine daily price moves for vol estimation.
-      const seenDates = new Set<string>();
-      const dailyHistory = history.filter((snap) => {
-        const dateKey = snap.capturedAt.toISOString().slice(0, 10); // YYYY-MM-DD UTC
-        if (seenDates.has(dateKey)) return false;
-        seenDates.add(dateKey);
-        return true;
-      });
+      // Fix: keep the LAST (most recent) snapshot per calendar day. Using the
+      // last rather than the first ensures we capture the actual daily Bezel
+      // price update rather than the stale pre-update value from midnight.
+      // history is sorted oldest→newest, so iterating forward and overwriting
+      // the Map entry leaves the most recent snapshot for each date.
+      const dayMap = new Map<string, (typeof history)[0]>();
+      for (const snap of history) {
+        dayMap.set(snap.capturedAt.toISOString().slice(0, 10), snap); // last write wins
+      }
+      const dailyHistory = Array.from(dayMap.values()); // oldest→newest
 
       log.info('Price history loaded', {
         ticker: mapping.kalshiTicker,

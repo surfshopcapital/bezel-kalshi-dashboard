@@ -42,17 +42,24 @@ export async function GET() {
             getBezelPriceHistory(bezelEntity.slug, 6_000),
             getLatestProbabilityRun(market.id),
           ]);
-          const seenDates = new Set<string>();
-          const history = rawHistory.filter((h) => {
-            const key = h.capturedAt.toISOString().slice(0, 10);
-            if (seenDates.has(key)) return false;
-            seenDates.add(key);
-            return true;
-          }).slice(-30); // keep the 30 most recent daily prices for the sparkline
+          // Deduplicate to the LAST snapshot per calendar day (last write wins).
+          // Keeping the most-recent snapshot per day ensures we capture the daily
+          // Bezel price update (indexes ~8 PM ET, models ~1 AM ET) rather than
+          // the stale pre-update value from earlier in the day.
+          const dayMap = new Map<string, typeof rawHistory[0]>();
+          for (const h of rawHistory) { // rawHistory is oldest→newest
+            dayMap.set(h.capturedAt.toISOString().slice(0, 10), h); // last write = most recent
+          }
+          const dailyHistory = Array.from(dayMap.values()).slice(-30); // 30 most recent days
 
-          if (history.length > 0) {
-            bezelPriceHistory = history.map((h) => h.price);
-            latestBezelSnap = history[history.length - 1];
+          if (dailyHistory.length > 0) {
+            bezelPriceHistory = dailyHistory.map((h) => h.price);
+          }
+
+          // Latest Bezel price is always the absolute most recent raw snapshot —
+          // never the dedup'd one, which may be an earlier intraday value.
+          if (rawHistory.length > 0) {
+            latestBezelSnap = rawHistory[rawHistory.length - 1];
           }
           latestProbRun = probRun;
         } else {
