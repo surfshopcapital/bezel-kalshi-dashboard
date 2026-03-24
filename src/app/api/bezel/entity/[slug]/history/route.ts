@@ -6,8 +6,9 @@
  *
  * `limit` controls the number of DAILY prices returned (not raw snapshots).
  * Bezel publishes one price per day; polling every 15 minutes creates many
- * duplicate snapshots. We over-fetch raw rows and deduplicate to one per
- * calendar day so the chart always reflects genuine daily price history.
+ * duplicate snapshots. We over-fetch raw rows and deduplicate to the LAST
+ * snapshot per calendar day so the chart shows the post-update price rather
+ * than the stale pre-update value from earlier in the day.
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { getBezelPriceHistory } from '@/lib/db/queries';
@@ -31,7 +32,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const url = new URL(request.url);
     // `limit` = number of DAILY price points to return.
     // Over-fetch raw rows (×200) to cover 15-min polling (96 rows/day), then
-    // deduplicate to the first snapshot per calendar day.
+    // deduplicate to the last (most recent) snapshot per calendar day.
     const limit = Math.min(
       500,
       Math.max(1, parseInt(url.searchParams.get('limit') ?? '90', 10) || 90),
@@ -40,14 +41,16 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     const rawHistory = await getBezelPriceHistory(slug, rawLimit);
 
-    // Keep the FIRST snapshot per calendar day (rawHistory is oldest→newest)
-    const seenDates = new Set<string>();
-    const dailyHistory = rawHistory.filter((h) => {
-      const dateKey = h.capturedAt.toISOString().slice(0, 10); // YYYY-MM-DD
-      if (seenDates.has(dateKey)) return false;
-      seenDates.add(dateKey);
-      return true;
-    });
+    // Keep the LAST (most recent) snapshot per calendar day.
+    // rawHistory is oldest→newest; iterating forward and overwriting the Map
+    // entry means the final value per date key is always the most recent
+    // intraday snapshot — capturing the Bezel daily update rather than the
+    // stale pre-update price from earlier in the day.
+    const dayMap = new Map<string, typeof rawHistory[0]>();
+    for (const h of rawHistory) {
+      dayMap.set(h.capturedAt.toISOString().slice(0, 10), h); // last write wins
+    }
+    const dailyHistory = Array.from(dayMap.values()); // already oldest→newest
 
     // Return the most recent `limit` daily prices
     const sliced = dailyHistory.slice(-limit);
