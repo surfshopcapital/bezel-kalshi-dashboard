@@ -35,10 +35,21 @@ export async function GET() {
         let latestProbRun = null;
 
         if (bezelEntity) {
-          const [history, probRun] = await Promise.all([
-            getBezelPriceHistory(bezelEntity.slug, 30),
+          // Over-fetch raw rows (30 days × 200 = 6,000) so that we get at least
+          // 30 DAILY prices even with 15-min polling (96 snapshots/day).
+          // Then deduplicate to one price per calendar day for the sparkline.
+          const [rawHistory, probRun] = await Promise.all([
+            getBezelPriceHistory(bezelEntity.slug, 6_000),
             getLatestProbabilityRun(market.id),
           ]);
+          const seenDates = new Set<string>();
+          const history = rawHistory.filter((h) => {
+            const key = h.capturedAt.toISOString().slice(0, 10);
+            if (seenDates.has(key)) return false;
+            seenDates.add(key);
+            return true;
+          }).slice(-30); // keep the 30 most recent daily prices for the sparkline
+
           if (history.length > 0) {
             bezelPriceHistory = history.map((h) => h.price);
             latestBezelSnap = history[history.length - 1];

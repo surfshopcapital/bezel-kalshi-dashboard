@@ -122,7 +122,7 @@ export function ProbabilityPanel({ probRun, rollingVols: rollingVolsProp }: Prob
           />
           <MetricCard
             label="Days Remaining"
-            value={daysRemaining != null ? `${daysRemaining}d` : '—'}
+            value={daysRemaining != null ? `${Math.round(daysRemaining)}d` : '—'}
             highlight={(daysRemaining ?? 999) <= 7}
             highlightColor="text-amber-400"
           />
@@ -300,18 +300,18 @@ export function ProbabilityPanel({ probRun, rollingVols: rollingVolsProp }: Prob
                     </td>
                     <td className="px-3 py-2 text-right">
                       <span className={`font-mono font-semibold text-green-400`}>
-                        {row.probAbove.toFixed(1)}%
+                        {(row.probAbove * 100).toFixed(1)}%
                       </span>
                       <div className="mt-0.5 h-1.5 w-full rounded-full bg-slate-700 overflow-hidden">
                         <div
-                          className={`h-full rounded-full ${probColor(row.probAbove)}`}
-                          style={{ width: `${row.probAbove}%` }}
+                          className={`h-full rounded-full ${probColor(row.probAbove * 100)}`}
+                          style={{ width: `${row.probAbove * 100}%` }}
                         />
                       </div>
                     </td>
                     <td className="px-3 py-2 text-right">
                       <span className="font-mono font-semibold text-red-400">
-                        {row.probBelow.toFixed(1)}%
+                        {(row.probBelow * 100).toFixed(1)}%
                       </span>
                     </td>
                     <td className="px-3 py-2 text-right font-mono text-slate-300">
